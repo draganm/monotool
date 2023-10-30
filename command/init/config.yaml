@@ -2,4 +2,4 @@ containers:
   cont1:
     image: <please insert docker image (without a tag) here>
     go:
-      module: <please enter the directory of the go main module here>
+      package: <please enter the directory of the go main module here>

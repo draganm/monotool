@@ -6,7 +6,7 @@ type Container struct {
 }
 
 type GoContainer struct {
-	ModulePath string `yaml:"modulePath"`
+	Package string `yaml:"package"`
 }
 
 type Config struct {
