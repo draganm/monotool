@@ -53,9 +53,9 @@ func Command() *cli.Command {
 
 			ctx := context.Background()
 
-			containers := map[string]string{}
+			images := map[string]string{}
 			values := map[string]any{
-				"containers": containers,
+				"images": images,
 			}
 
 			fmt.Println("checking images")
@@ -91,7 +91,7 @@ func Command() *cli.Command {
 				}
 				fmt.Printf("  ✅ pushed\n")
 
-				containers[n] = di
+				images[n] = di
 
 				fmt.Println()
 
