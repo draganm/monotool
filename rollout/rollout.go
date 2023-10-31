@@ -47,7 +47,7 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 			return nil
 		}
 
-		relativePath, err := filepath.Rel(path, templatesPath)
+		relativePath, err := filepath.Rel(templatesPath, path)
 		if err != nil {
 			return fmt.Errorf("could not get relative path of %s: %w", path, err)
 		}
@@ -57,7 +57,7 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 			return fmt.Errorf("could not read %s: %w", path, err)
 		}
 
-		templates[relativePath] = data
+		templates[filepath.Join(r.TargetPath, relativePath)] = data
 
 		return nil
 	})
@@ -69,17 +69,19 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 	generateManifests := func(dir string) error {
 		for n, d := range templates {
 			manifestPath := filepath.Join(dir, n)
+
 			err := os.MkdirAll(path.Dir(manifestPath), 0777)
 			if err != nil {
 				return fmt.Errorf("could not mkdir %s: %w", path.Dir(manifestPath), err)
 			}
+
 			f, err := os.OpenFile(manifestPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0777)
 			if err != nil {
 				return fmt.Errorf("could not open manifest output file %s: %w", manifestPath, err)
 			}
 
 			enc := yaml.NewEncoder(f)
-			err = interpolate.Interpolate(string(d), manifestPath, values, enc)
+			err = interpolate.Interpolate(string(d), "", values, enc)
 			if err != nil {
 				f.Close()
 				return fmt.Errorf("could not interpolate %s: %w", manifestPath, err)
