@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/draganm/monotool/command/container"
+	"github.com/draganm/monotool/command/images"
 	initcommand "github.com/draganm/monotool/command/init"
 	"github.com/draganm/monotool/config"
 	"github.com/urfave/cli/v2"
@@ -13,7 +13,7 @@ func main() {
 	app := &cli.App{
 		Commands: []*cli.Command{
 			initcommand.Command(),
-			container.Command(),
+			images.Command(),
 		},
 		Action: func(ctx *cli.Context) error {
 			_, err := config.Load()

@@ -32,6 +32,7 @@ func Load() (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("could not decode %s: %w", configPath, err)
 		}
+		cfg.ProjectRoot = dir
 
 		return cfg, nil
 

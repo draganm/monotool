@@ -1,5 +1,5 @@
-containers:
-  cont1:
-    image: <please insert docker image (without a tag) here>
+images:
+  image1:
+    dockerImage: <please insert docker image (without a tag) here>
     go:
       package: <please enter the directory of the go main module here>
