@@ -1,4 +1,4 @@
-package deployment
+package rollout
 
 import (
 	"context"
@@ -10,27 +10,23 @@ import (
 	"path/filepath"
 
 	"github.com/draganm/manifestor/interpolate"
-	"github.com/draganm/monotool/deployment/gitea"
+	"github.com/draganm/monotool/rollout/gitea"
 	"gopkg.in/yaml.v3"
 )
 
-type Deployment struct {
-	Gitea        *gitea.GiteaDeployment `yaml:"gitea"`
-	Templates    string                 `yaml:"templates"`
-	TargetPath   string                 `yaml:"targetPath"`
-	PruneTargets bool                   `yaml:"pruneTargets"`
+type Rollout struct {
+	Gitea        *gitea.GiteaRollout `yaml:"gitea"`
+	Templates    string              `yaml:"templates"`
+	TargetPath   string              `yaml:"targetPath"`
+	PruneTargets bool                `yaml:"pruneTargets"`
 }
 
-type GiteaDeployment struct {
-	RepoURL string `yaml:"repoUrl"`
-}
-
-func (d *Deployment) Deploy(ctx context.Context, projectRoot string, values map[string]any) error {
-	if d.Gitea != nil {
+func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[string]any) error {
+	if r.Gitea == nil {
 		return errors.New("deployment has no gitea config")
 	}
 
-	templatesPath, err := filepath.Abs(filepath.Join(projectRoot, d.Templates))
+	templatesPath, err := filepath.Abs(filepath.Join(projectRoot, r.Templates))
 	if err != nil {
 		return fmt.Errorf("could not get absolute path for the deployment templates: %w", err)
 	}
@@ -98,7 +94,7 @@ func (d *Deployment) Deploy(ctx context.Context, projectRoot string, values map[
 		return nil
 	}
 
-	err = d.Gitea.Deploy(ctx, generateManifests)
+	err = r.Gitea.RollOut(ctx, generateManifests)
 	if err != nil {
 		return fmt.Errorf("gitea deployment failed: %w", err)
 	}

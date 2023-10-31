@@ -33,12 +33,19 @@ func (i *Image) calculateHash(ctx context.Context, projectRoot string) ([]byte, 
 
 func (i *Image) IsAlreadyBuilt(ctx context.Context, projectRoot string) (bool, error) {
 
-	hash, err := i.calculateHash(ctx, projectRoot)
+	imageWithTag, err := i.DockerImageName(ctx, projectRoot)
 	if err != nil {
 		return false, err
 	}
 
-	imageWithTag := fmt.Sprintf("%s:%x", i.DockerImage, hash[:8])
+	localExists, err := docker.LocalImageExists(ctx, imageWithTag)
+	if err != nil {
+		return false, err
+	}
+
+	if localExists {
+		return true, nil
+	}
 
 	err = docker.Pull(ctx, imageWithTag)
 	if err == docker.ErrImageNotFound {

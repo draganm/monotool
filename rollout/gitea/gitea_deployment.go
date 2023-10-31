@@ -1,5 +1,5 @@
 package gitea
 
-type GiteaDeployment struct {
+type GiteaRollout struct {
 	RepoURL string `yaml:"repoUrl"`
 }

@@ -1,8 +1,8 @@
 package config
 
 import (
-	"github.com/draganm/monotool/deployment"
 	"github.com/draganm/monotool/image"
+	"github.com/draganm/monotool/rollout"
 )
 
 // type Deployment struct {
@@ -19,7 +19,7 @@ import (
 type Config struct {
 	// ProjectRoot is the location of the parent of the .monotool
 	// directory
-	ProjectRoot string                            `yaml:"-"`
-	Images      map[string]*image.Image           `yaml:"images"`
-	Deployments map[string]*deployment.Deployment `yaml:"deployments"`
+	ProjectRoot string                      `yaml:"-"`
+	Images      map[string]*image.Image     `yaml:"images"`
+	RollOuts    map[string]*rollout.Rollout `yaml:"rollouts"`
 }
