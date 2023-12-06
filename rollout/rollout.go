@@ -111,7 +111,7 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 			}
 
 			manifestPath := filepath.Join(dir, chart.TargetPath)
-			err = os.MkdirAll(path.Dir(manifestPath), 0777)
+			err = os.MkdirAll(manifestPath, 0777)
 			if err != nil {
 				return fmt.Errorf("could not mkdir %s: %w", path.Dir(manifestPath), err)
 			}
