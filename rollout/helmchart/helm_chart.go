@@ -56,7 +56,7 @@ func (h *HelmChart) GenerateManifests(repositoryCache string) (string, error) {
 		RepoURL: h.Repository,
 		Version: h.Version,
 	}
-	loc, err := cpo.LocateChart("nack", &cli.EnvSettings{
+	loc, err := cpo.LocateChart(h.Chart, &cli.EnvSettings{
 		RepositoryCache: repositoryCache,
 	})
 	if err != nil {
