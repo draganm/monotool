@@ -4,14 +4,27 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"os"
+	"os/signal"
 	"sort"
 	"strings"
+	"sync/atomic"
+	"syscall"
+	"time"
 
 	"github.com/draganm/monotool/config"
 	"github.com/draganm/monotool/docker"
+	"github.com/gosuri/uiprogress"
+	"github.com/gosuri/uiprogress/util/strutil"
 	"github.com/samber/lo"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/sync/errgroup"
 )
+
+func pointerOf[T any](v T) *T {
+	return &v
+}
 
 func Command() *cli.Command {
 	return &cli.Command{
@@ -51,50 +64,84 @@ func Command() *cli.Command {
 				return fmt.Errorf("rollout %q does not exist", requestedRollout)
 			}
 
-			ctx := context.Background()
+			ctx, cancel := context.WithCancel(context.Background())
+
+			go func() {
+				sigs := make(chan os.Signal, 1)
+				signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+				sig := <-sigs
+				log.Println("signal received, terminating", "sig", sig)
+				cancel()
+			}()
 
 			images := map[string]string{}
 			values := map[string]any{
 				"images": images,
 			}
 
-			fmt.Println("checking images")
+			eg, ctx := errgroup.WithContext(ctx)
+
+			progress := uiprogress.New()
+			progress.RefreshInterval = time.Second
+			progress.Width = 20
+			progress.Start()
 
 			for n, im := range cfg.Images {
-				isBuilt, err := im.IsAlreadyBuilt(ctx, cfg.ProjectRoot)
-				if err != nil {
-					return fmt.Errorf("could not get status of image %s: %w", n, err)
-				}
+				n := n
+				im := im
+				eg.Go(func() error {
+					bar := progress.AddBar(3)
+					bar.PrependElapsed()
+					bar.TimeStarted = time.Now()
 
-				di, err := im.DockerImageName(ctx, cfg.ProjectRoot)
-				if err != nil {
-					return fmt.Errorf("could not calculate docker image of %s: %w", n, err)
-				}
+					state := atomic.Pointer[string]{}
+					state.Store(pointerOf("initializing"))
 
-				fmt.Printf("  %s: %s\n", n, di)
+					bar.AppendFunc(func(b *uiprogress.Bar) string {
+						return fmt.Sprintf("%s: %s", strutil.PadRight(*state.Load(), 20, ' '), n)
+					})
+					state.Store(pointerOf("getting image status"))
+					isBuilt, err := im.IsAlreadyBuilt(ctx, cfg.ProjectRoot)
+					if err != nil {
+						return fmt.Errorf("could not get status of image %s: %w", n, err)
+					}
+					di, err := im.DockerImageName(ctx, cfg.ProjectRoot)
+					if err != nil {
+						return fmt.Errorf("could not calculate docker image of %s: %w", n, err)
+					}
 
-				if !isBuilt {
-					fmt.Printf("  building %s: ", n)
-					err = im.Build(ctx, cfg.ProjectRoot)
+					bar.Incr()
+					if !isBuilt {
+						state.Store(pointerOf("building image"))
+						err = im.Build(ctx, cfg.ProjectRoot)
+						if err != nil {
+							return err
+						}
+					}
+
+					bar.Incr()
+					state.Store(pointerOf("pushing image"))
+
+					err = docker.Push(ctx, di)
 					if err != nil {
 						return err
 					}
-					fmt.Printf("  ✅ built\n")
-				} else {
-					fmt.Printf("  ✅ already built\n")
-				}
 
-				fmt.Println("  pushing to docker registry")
-				err = docker.Push(ctx, di)
-				if err != nil {
-					return err
-				}
-				fmt.Printf("  ✅ pushed\n")
+					bar.Incr()
+					images[n] = di
+					state.Store(pointerOf("done"))
 
-				images[n] = di
+					return nil
 
-				fmt.Println()
+				})
 
+			}
+
+			err = eg.Wait()
+			progress.Stop()
+			if err != nil {
+				return fmt.Errorf("could not build images: %w", err)
 			}
 
 			fmt.Printf("rolling out to %s\n", requestedRollout)

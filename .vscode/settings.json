@@ -1,14 +1,19 @@
 {
   "cSpell.words": [
     "draganm",
+    "errgroup",
     "gitea",
     "gosha",
+    "gosuri",
     "helmchart",
     "initcommand",
     "modfile",
     "monotool",
     "rollouts",
+    "samber",
+    "strutil",
     "templ",
+    "uiprogress",
     "urfave"
   ]
 }
