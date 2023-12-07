@@ -84,7 +84,7 @@ func (i *Image) Build(ctx context.Context, projectRoot string) error {
 	}
 
 	if err != nil {
-		return fmt.Errorf("while building image: %w", err)
+		return fmt.Errorf("while building image %s: %w", imageWithTag, err)
 	}
 
 	return nil

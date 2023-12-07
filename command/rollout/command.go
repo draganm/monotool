@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"os"
+	"os/signal"
 	"sort"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/draganm/monotool/config"
@@ -60,7 +64,16 @@ func Command() *cli.Command {
 				return fmt.Errorf("rollout %q does not exist", requestedRollout)
 			}
 
-			ctx := context.Background()
+			ctx, cancel := context.WithCancel(context.Background())
+
+			go func() {
+				sigs := make(chan os.Signal, 1)
+				signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+				sig := <-sigs
+				log.Println("signal received, terminating", "sig", sig)
+				cancel()
+			}()
 
 			images := map[string]string{}
 			values := map[string]any{
