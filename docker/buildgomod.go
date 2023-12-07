@@ -5,12 +5,10 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
 	"text/template"
-	"time"
 
 	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/go/packages"
@@ -25,7 +23,6 @@ type DockerfileData struct {
 }
 
 func BuildGoMod(ctx context.Context, mainPackagePath string, imageName string) error {
-	startTime := time.Now()
 	pkg, err := packages.Load(&packages.Config{
 		Mode:    packages.NeedModule | packages.NeedName,
 		Context: ctx,
@@ -90,41 +87,14 @@ func BuildGoMod(ctx context.Context, mainPackagePath string, imageName string) e
 	cmd := exec.CommandContext(ctx, "docker", "buildx", "build", "-t", imageName, "-f", tempDockerfile.Name(), "--progress", "plain", dockerRoot)
 	out := new(bytes.Buffer)
 
-	dp := dotPrinter()
+	cmd.Stdout = out
+	cmd.Stderr = out
 
-	fmt.Print("\tbuilding image: ")
-
-	cmd.Stdout = io.MultiWriter(dp, out)
-	cmd.Stderr = io.MultiWriter(dp, out)
 	err = cmd.Run()
-	dp.Close()
-	fmt.Println()
 	if err != nil {
 		return fmt.Errorf("docker build failed (%w):\n%s", err, out.String())
 	}
-	fmt.Println("\t✅ build successful, build time:", time.Since(startTime))
 
 	return nil
 
-}
-
-func dotPrinter() io.WriteCloser {
-	r, w := io.Pipe()
-	go func() {
-		buffer := make([]byte, 128)
-		for {
-			n, err := r.Read(buffer)
-			if n > 0 {
-				cnt := strings.Count(string(buffer), "\n")
-				for i := 0; i < cnt; i++ {
-					fmt.Print(".")
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-
-	return w
 }
