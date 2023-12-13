@@ -98,8 +98,13 @@ func Command() *cli.Command {
 					state := atomic.Pointer[string]{}
 					state.Store(pointerOf("initializing"))
 
+					imageName, err := im.DockerImageName(ctx, cfg.ProjectRoot)
+					if err != nil {
+						return fmt.Errorf("could not calculate docker image of %s: %w", n, err)
+					}
+
 					bar.AppendFunc(func(b *uiprogress.Bar) string {
-						return fmt.Sprintf("%s: %s", strutil.PadRight(*state.Load(), 20, ' '), n)
+						return fmt.Sprintf("%s| %s", strutil.PadRight(*state.Load(), 23, ' '), imageName)
 					})
 					state.Store(pointerOf("getting image status"))
 					isBuilt, err := im.IsAlreadyBuilt(ctx, cfg.ProjectRoot)
