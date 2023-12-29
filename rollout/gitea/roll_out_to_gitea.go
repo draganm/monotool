@@ -50,7 +50,7 @@ func (g *GiteaRollout) RollOut(ctx context.Context, generate func(dir string) er
 		return fmt.Errorf("could not create commit: %w", err)
 	}
 
-	err = pushToOrigin(ctx, td)
+	err = pushToOrigin(ctx, td, branchName)
 	if err != nil {
 		return fmt.Errorf("could not push: %w", err)
 	}

@@ -79,8 +79,8 @@ func createCommit(ctx context.Context, dir string, message string) error {
 	return nil
 }
 
-func pushToOrigin(ctx context.Context, dir string) error {
-	cmd := exec.Command("git", "push", "origin")
+func pushToOrigin(ctx context.Context, dir string, branchName string) error {
+	cmd := exec.Command("git", "push", "origin", branchName)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
 	cmd.Stderr = out
