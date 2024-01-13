@@ -117,10 +117,8 @@ func Command() *cli.Command {
 					}
 
 					bar.Incr()
-					needsPush := false
 
 					if !isBuilt {
-						needsPush = true
 						state.Store(pointerOf("building image"))
 						err = im.Build(ctx, cfg.ProjectRoot)
 						if err != nil {
@@ -130,12 +128,10 @@ func Command() *cli.Command {
 
 					bar.Incr()
 
-					if needsPush {
-						state.Store(pointerOf("pushing image"))
-						err = docker.Push(ctx, di)
-						if err != nil {
-							return err
-						}
+					state.Store(pointerOf("pushing image"))
+					err = docker.Push(ctx, di)
+					if err != nil {
+						return err
 					}
 
 					bar.Incr()
