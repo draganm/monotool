@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"path/filepath"
 
 	"github.com/draganm/gosha/gosha"
@@ -78,7 +79,7 @@ func (i *Image) Build(ctx context.Context, projectRoot string) error {
 		return err
 	}
 
-	err = docker.BuildGoMod(ctx, i.Go.Package, imageWithTag)
+	err = docker.BuildGoMod(ctx, path.Join(projectRoot, i.Go.Package), imageWithTag)
 	if err == docker.ErrImageNotFound {
 		return nil
 	}
