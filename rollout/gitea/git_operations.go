@@ -9,7 +9,7 @@ import (
 )
 
 func cloneRepo(ctx context.Context, url string, dir string) error {
-	cmd := exec.Command("git", "clone", "-q", url, dir)
+	cmd := exec.Command("git", "clone", "--depth", "1", "--quiet", url, dir)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
 	cmd.Stderr = out
