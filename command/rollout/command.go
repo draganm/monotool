@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -79,6 +80,7 @@ func Command() *cli.Command {
 			values := map[string]any{
 				"images": images,
 			}
+			imagesLock := &sync.Mutex{}
 
 			eg, ctx := errgroup.WithContext(ctx)
 
@@ -135,7 +137,9 @@ func Command() *cli.Command {
 					}
 
 					bar.Incr()
+					imagesLock.Lock()
 					images[n] = di
+					imagesLock.Unlock()
 					state.Store(pointerOf("done"))
 
 					return nil
