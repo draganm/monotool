@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"path/filepath"
 	"sort"
 	"time"
@@ -48,7 +49,7 @@ func Command() *cli.Command {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 				err = docker.Pull(ctx, imageWithTag)
 				if err == docker.ErrImageNotFound {
-					err = docker.BuildGoMod(ctx, image.Go.Package, imageWithTag)
+					err = docker.BuildGoMod(ctx, path.Join(cfg.ProjectRoot, image.Go.Package), imageWithTag)
 					if err != nil {
 						cancel()
 						return err
