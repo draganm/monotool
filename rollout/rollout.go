@@ -85,7 +85,7 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 				return fmt.Errorf("could not mkdir %s: %w", path.Dir(manifestPath), err)
 			}
 
-			f, err := os.OpenFile(manifestPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0777)
+			f, err := os.OpenFile(manifestPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 			if err != nil {
 				return fmt.Errorf("could not open manifest output file %s: %w", manifestPath, err)
 			}
