@@ -109,6 +109,18 @@ func Command() *cli.Command {
 						return fmt.Sprintf("%s| %s", strutil.PadRight(*state.Load(), 23, ' '), imageName)
 					})
 					state.Store(pointerOf("getting image status"))
+
+					hasImage, err := docker.RepoHasImage(ctx, imageName)
+					if err != nil {
+						return fmt.Errorf("could not get status of image %s: %w", n, err)
+					}
+
+					if hasImage {
+						bar.Set(3)
+						state.Store(pointerOf("already pushed"))
+						return nil
+					}
+
 					isBuilt, err := im.IsAlreadyBuilt(ctx, cfg.ProjectRoot)
 					if err != nil {
 						return fmt.Errorf("could not get status of image %s: %w", n, err)
