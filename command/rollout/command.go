@@ -105,6 +105,10 @@ func Command() *cli.Command {
 						return fmt.Errorf("could not calculate docker image of %s: %w", n, err)
 					}
 
+					imagesLock.Lock()
+					images[n] = imageName
+					imagesLock.Unlock()
+
 					bar.AppendFunc(func(b *uiprogress.Bar) string {
 						return fmt.Sprintf("%s| %s", strutil.PadRight(*state.Load(), 23, ' '), imageName)
 					})
@@ -125,10 +129,6 @@ func Command() *cli.Command {
 					if err != nil {
 						return fmt.Errorf("could not get status of image %s: %w", n, err)
 					}
-					di, err := im.DockerImageName(ctx, cfg.ProjectRoot)
-					if err != nil {
-						return fmt.Errorf("could not calculate docker image of %s: %w", n, err)
-					}
 
 					bar.Incr()
 
@@ -143,15 +143,12 @@ func Command() *cli.Command {
 					bar.Incr()
 
 					state.Store(pointerOf("pushing image"))
-					err = docker.Push(ctx, di)
+					err = docker.Push(ctx, imageName)
 					if err != nil {
 						return err
 					}
 
 					bar.Incr()
-					imagesLock.Lock()
-					images[n] = di
-					imagesLock.Unlock()
 					state.Store(pointerOf("done"))
 
 					return nil
