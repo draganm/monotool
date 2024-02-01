@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/draganm/manifestor/interpolate"
 	"github.com/draganm/monotool/rollout/gitea"
@@ -43,9 +44,22 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 
 	templates := map[string][]byte{}
 
+	allDirs := []string{}
+
 	err = filepath.WalkDir(templatesPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+
+		if d.IsDir() {
+			relativePath, err := filepath.Rel(templatesPath, path)
+			if err != nil {
+				return fmt.Errorf("could not get relative path of %s: %w", path, err)
+			}
+
+			if relativePath != "." {
+				allDirs = append(allDirs, relativePath)
+			}
 		}
 
 		if !d.Type().IsRegular() {
@@ -76,7 +90,39 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 		return fmt.Errorf("could not read templates: %w", err)
 	}
 
+	removeOldManifests := func(dir string) error {
+
+		if !r.PruneTargets {
+			return nil
+		}
+
+		prev := allDirs[0]
+
+		toRemove := []string{
+			filepath.Join(dir, prev),
+		}
+
+		for _, d := range allDirs[1:] {
+			if strings.HasPrefix(d, prev) {
+				continue
+			}
+			toRemove = append(toRemove, filepath.Join(dir, d))
+			prev = d
+		}
+
+		for _, d := range toRemove {
+			os.RemoveAll(d)
+		}
+
+		return nil
+	}
+
 	generateManifests := func(dir string) error {
+		err = removeOldManifests(dir)
+		if err != nil {
+			return fmt.Errorf("could not remove old manifests: %w", err)
+		}
+
 		for n, d := range templates {
 			manifestPath := filepath.Join(dir, n)
 
