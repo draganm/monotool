@@ -1,6 +1,6 @@
 module github.com/draganm/monotool
 
-go 1.20
+go 1.23
 
 require (
 	github.com/distribution/reference v0.5.0
