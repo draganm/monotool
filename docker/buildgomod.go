@@ -22,7 +22,7 @@ type DockerfileData struct {
 	GoVersion   string
 }
 
-func BuildGoMod(ctx context.Context, mainPackagePath string, imageName string) error {
+func BuildGoMod(ctx context.Context, mainPackagePath string, imageName string, platform string) error {
 	pkg, err := packages.Load(&packages.Config{
 		Mode:    packages.NeedModule | packages.NeedName,
 		Context: ctx,
@@ -84,7 +84,7 @@ func BuildGoMod(ctx context.Context, mainPackagePath string, imageName string) e
 		return fmt.Errorf("could not close temp docker file: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "docker", "buildx", "build", "-t", imageName, "-f", tempDockerfile.Name(), "--progress", "plain", dockerRoot)
+	cmd := exec.CommandContext(ctx, "docker", "buildx", "build", "--platform", platform, "-t", imageName, "-f", tempDockerfile.Name(), "--progress", "plain", dockerRoot)
 	out := new(bytes.Buffer)
 
 	cmd.Stdout = out
