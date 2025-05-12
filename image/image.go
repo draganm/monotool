@@ -20,7 +20,7 @@ type GoImage struct {
 	Package string `yaml:"package"`
 }
 
-func (i *Image) calculateHash(ctx context.Context, projectRoot string) ([]byte, error) {
+func (i *Image) calculateHash(projectRoot string) ([]byte, error) {
 	if i.Go == nil {
 		return nil, errors.New("no go configuration for the container found")
 	}
@@ -34,7 +34,7 @@ func (i *Image) calculateHash(ctx context.Context, projectRoot string) ([]byte, 
 
 func (i *Image) IsAlreadyBuilt(ctx context.Context, projectRoot string) (bool, error) {
 
-	imageWithTag, err := i.DockerImageName(ctx, projectRoot)
+	imageWithTag, err := i.DockerImageName(projectRoot)
 	if err != nil {
 		return false, err
 	}
@@ -61,8 +61,8 @@ func (i *Image) IsAlreadyBuilt(ctx context.Context, projectRoot string) (bool, e
 
 }
 
-func (i *Image) DockerImageName(ctx context.Context, projectRoot string) (string, error) {
-	hash, err := i.calculateHash(ctx, projectRoot)
+func (i *Image) DockerImageName(projectRoot string) (string, error) {
+	hash, err := i.calculateHash(projectRoot)
 	if err != nil {
 		return "", fmt.Errorf("could not calculate hash: %w", err)
 	}
@@ -74,7 +74,7 @@ func (i *Image) DockerImageName(ctx context.Context, projectRoot string) (string
 
 func (i *Image) Build(ctx context.Context, projectRoot string) error {
 
-	imageWithTag, err := i.DockerImageName(ctx, projectRoot)
+	imageWithTag, err := i.DockerImageName(projectRoot)
 	if err != nil {
 		return err
 	}

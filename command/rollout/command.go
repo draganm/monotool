@@ -1,11 +1,8 @@
 package rollout
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"log"
-	"os"
 	"os/signal"
 	"sort"
 	"strings"
@@ -21,6 +18,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 )
 
 func pointerOf[T any](v T) *T {
@@ -37,6 +35,9 @@ func Command() *cli.Command {
 			}
 
 			requestedRollout := c.Args().First()
+
+			buildSemapore := semaphore.NewWeighted(4)
+			checkImageSemaphore := semaphore.NewWeighted(10)
 
 			if requestedRollout == "" {
 
@@ -65,24 +66,15 @@ func Command() *cli.Command {
 				return fmt.Errorf("rollout %q does not exist", requestedRollout)
 			}
 
-			ctx, cancel := context.WithCancel(context.Background())
-
-			go func() {
-				sigs := make(chan os.Signal, 1)
-				signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
-				sig := <-sigs
-				log.Println("signal received, terminating", "sig", sig)
-				cancel()
-			}()
-
+			ctx, cancel := signal.NotifyContext(c.Context, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+			defer cancel()
 			images := map[string]string{}
 			values := map[string]any{
 				"images": images,
 			}
 			imagesLock := &sync.Mutex{}
 
-			eg, ctx := errgroup.WithContext(ctx)
+			eg, egCtx := errgroup.WithContext(ctx)
 
 			progress := uiprogress.New()
 			progress.RefreshInterval = time.Second
@@ -93,6 +85,10 @@ func Command() *cli.Command {
 				n := n
 				im := im
 				eg.Go(func() error {
+					if egCtx.Err() != nil {
+						return egCtx.Err()
+					}
+
 					bar := progress.AddBar(3)
 					bar.PrependElapsed()
 					bar.TimeStarted = time.Now()
@@ -100,7 +96,7 @@ func Command() *cli.Command {
 					state := atomic.Pointer[string]{}
 					state.Store(pointerOf("initializing"))
 
-					imageName, err := im.DockerImageName(ctx, cfg.ProjectRoot)
+					imageName, err := im.DockerImageName(cfg.ProjectRoot)
 					if err != nil {
 						return fmt.Errorf("could not calculate docker image of %s: %w", n, err)
 					}
@@ -109,15 +105,20 @@ func Command() *cli.Command {
 					images[n] = imageName
 					imagesLock.Unlock()
 
+					checkImageSemaphore.Acquire(egCtx, 1)
+
 					bar.AppendFunc(func(b *uiprogress.Bar) string {
 						return fmt.Sprintf("%s| %s", strutil.PadRight(*state.Load(), 23, ' '), imageName)
 					})
 					state.Store(pointerOf("getting image status"))
 
-					hasImage, err := docker.RepoHasImage(ctx, imageName)
+					hasImage, err := docker.RepoHasImage(egCtx, imageName)
 					if err != nil {
+						checkImageSemaphore.Release(1)
 						return fmt.Errorf("could not get status of image %s: %w", n, err)
 					}
+
+					checkImageSemaphore.Release(1)
 
 					if hasImage {
 						bar.Set(3)
@@ -125,7 +126,7 @@ func Command() *cli.Command {
 						return nil
 					}
 
-					isBuilt, err := im.IsAlreadyBuilt(ctx, cfg.ProjectRoot)
+					isBuilt, err := im.IsAlreadyBuilt(egCtx, cfg.ProjectRoot)
 					if err != nil {
 						return fmt.Errorf("could not get status of image %s: %w", n, err)
 					}
@@ -133,8 +134,10 @@ func Command() *cli.Command {
 					bar.Incr()
 
 					if !isBuilt {
+						buildSemapore.Acquire(egCtx, 1)
 						state.Store(pointerOf("building image"))
-						err = im.Build(ctx, cfg.ProjectRoot)
+						err = im.Build(egCtx, cfg.ProjectRoot)
+						buildSemapore.Release(1)
 						if err != nil {
 							return err
 						}
@@ -143,7 +146,7 @@ func Command() *cli.Command {
 					bar.Incr()
 
 					state.Store(pointerOf("pushing image"))
-					err = docker.Push(ctx, imageName)
+					err = docker.Push(egCtx, imageName)
 					if err != nil {
 						return err
 					}
