@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/distribution/reference"
 	"github.com/docker/cli/cli/command"
@@ -47,14 +48,23 @@ func RepoHasImage(ctx context.Context, image string) (bool, error) {
 		return false, fmt.Errorf("could not parse image name: %w", err)
 	}
 
-	_, err = newRegistryClient(cli, true).GetManifest(ctx, ref)
+	list, err := newRegistryClient(cli, true).GetManifestList(ctx, ref)
 	if err != nil {
 		_, isNotFound := err.(notFoundInterface)
 
 		if isNotFound {
 			return false, nil
 		}
+
+		if strings.Contains(err.Error(), "is a manifest list") {
+			return false, nil
+		}
+
+		if strings.Contains(err.Error(), "unsupported manifest format") {
+			return false, nil
+		}
+
 		return false, err
 	}
-	return true, nil
+	return len(list) > 0, nil
 }

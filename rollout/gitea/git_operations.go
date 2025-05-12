@@ -98,7 +98,7 @@ func pushToOrigin(ctx context.Context, dir string, branchName string) error {
 }
 
 func createPR(ctx context.Context, dir string, title, description string) (string, error) {
-	cmd := exec.Command("tea", "pr", "create", "--title", title, "--description", description)
+	cmd := exec.CommandContext(ctx, "tea", "pr", "create", "--title", title, "--description", description)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
 	cmd.Stderr = out

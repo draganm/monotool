@@ -29,7 +29,7 @@ func Command() *cli.Command {
 
 				fmt.Println(cn + ":")
 
-				imageName, err := image.DockerImageName(ctx, cfg.ProjectRoot)
+				imageName, err := image.DockerImageName(cfg.ProjectRoot)
 				if err != nil {
 					return fmt.Errorf("could not calculate image name: %w", err)
 				}
