@@ -1,11 +1,8 @@
 package rollout
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"log"
-	"os"
 	"os/signal"
 	"sort"
 	"strings"
@@ -65,24 +62,15 @@ func Command() *cli.Command {
 				return fmt.Errorf("rollout %q does not exist", requestedRollout)
 			}
 
-			ctx, cancel := context.WithCancel(context.Background())
-
-			go func() {
-				sigs := make(chan os.Signal, 1)
-				signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
-				sig := <-sigs
-				log.Println("signal received, terminating", "sig", sig)
-				cancel()
-			}()
-
+			ctx, cancel := signal.NotifyContext(c.Context, syscall.SIGINT, syscall.SIGTERM)
+			defer cancel()
 			images := map[string]string{}
 			values := map[string]any{
 				"images": images,
 			}
 			imagesLock := &sync.Mutex{}
 
-			eg, ctx := errgroup.WithContext(ctx)
+			eg, egCtx := errgroup.WithContext(ctx)
 
 			progress := uiprogress.New()
 			progress.RefreshInterval = time.Second
@@ -100,7 +88,7 @@ func Command() *cli.Command {
 					state := atomic.Pointer[string]{}
 					state.Store(pointerOf("initializing"))
 
-					imageName, err := im.DockerImageName(ctx, cfg.ProjectRoot)
+					imageName, err := im.DockerImageName(egCtx, cfg.ProjectRoot)
 					if err != nil {
 						return fmt.Errorf("could not calculate docker image of %s: %w", n, err)
 					}
@@ -114,7 +102,7 @@ func Command() *cli.Command {
 					})
 					state.Store(pointerOf("getting image status"))
 
-					hasImage, err := docker.RepoHasImage(ctx, imageName)
+					hasImage, err := docker.RepoHasImage(egCtx, imageName)
 					if err != nil {
 						return fmt.Errorf("could not get status of image %s: %w", n, err)
 					}
@@ -125,7 +113,7 @@ func Command() *cli.Command {
 						return nil
 					}
 
-					isBuilt, err := im.IsAlreadyBuilt(ctx, cfg.ProjectRoot)
+					isBuilt, err := im.IsAlreadyBuilt(egCtx, cfg.ProjectRoot)
 					if err != nil {
 						return fmt.Errorf("could not get status of image %s: %w", n, err)
 					}
@@ -134,7 +122,7 @@ func Command() *cli.Command {
 
 					if !isBuilt {
 						state.Store(pointerOf("building image"))
-						err = im.Build(ctx, cfg.ProjectRoot)
+						err = im.Build(egCtx, cfg.ProjectRoot)
 						if err != nil {
 							return err
 						}
@@ -143,7 +131,7 @@ func Command() *cli.Command {
 					bar.Incr()
 
 					state.Store(pointerOf("pushing image"))
-					err = docker.Push(ctx, imageName)
+					err = docker.Push(egCtx, imageName)
 					if err != nil {
 						return err
 					}
