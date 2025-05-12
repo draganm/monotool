@@ -25,7 +25,7 @@ func Pull(ctx context.Context, image string) error {
 	err = cmd.Run()
 
 	if err != nil {
-		if strings.Contains(out.String(), "manifest unknown") {
+		if strings.Contains(out.String(), ": not found") {
 			return ErrImageNotFound
 		}
 		return err
