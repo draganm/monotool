@@ -105,7 +105,10 @@ func Command() *cli.Command {
 					images[n] = imageName
 					imagesLock.Unlock()
 
-					checkImageSemaphore.Acquire(egCtx, 1)
+					err = checkImageSemaphore.Acquire(egCtx, 1)
+					if err != nil {
+						return fmt.Errorf("could not acquire semaphore for image %s: %w", n, err)
+					}
 
 					bar.AppendFunc(func(b *uiprogress.Bar) string {
 						return fmt.Sprintf("%s| %s", strutil.PadRight(*state.Load(), 23, ' '), imageName)
