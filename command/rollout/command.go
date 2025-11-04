@@ -137,7 +137,10 @@ func Command() *cli.Command {
 					bar.Incr()
 
 					if !isBuilt {
-						buildSemapore.Acquire(egCtx, 1)
+						err = buildSemapore.Acquire(egCtx, 1)
+						if err != nil {
+							return fmt.Errorf("could not acquire semaphore for building image %s: %w", n, err)
+						}
 						state.Store(pointerOf("building image"))
 						err = im.Build(egCtx, cfg.ProjectRoot)
 						buildSemapore.Release(1)
