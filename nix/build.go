@@ -15,7 +15,7 @@ import (
 // (the Nix store path the result symlink points to).
 // The platform parameter uses Docker format (e.g. "linux/amd64") and is converted
 // to a Nix system string. On macOS, when targeting Linux, the build is executed
-// inside a Docker container to avoid the need for a remote Linux builder.
+// inside a Lima VM to avoid the need for a remote Linux builder.
 func Build(ctx context.Context, nixFile string, platform string) (string, error) {
 	absPath, err := filepath.Abs(nixFile)
 	if err != nil {
@@ -28,7 +28,7 @@ func Build(ctx context.Context, nixFile string, platform string) (string, error)
 	}
 
 	if runtime.GOOS == "darwin" && strings.HasPrefix(platform, "linux/") {
-		return buildViaDarwinDocker(ctx, absPath, nixSystem)
+		return buildViaDarwinLima(ctx, absPath, nixSystem)
 	}
 
 	return buildNative(ctx, absPath, nixSystem)
@@ -59,32 +59,95 @@ func buildNative(ctx context.Context, absPath string, nixSystem string) (string,
 	return resultPath, nil
 }
 
-// buildViaDarwinDocker runs nix-build inside a Linux Docker container when on macOS.
-// It mounts the project directory and a temporary output directory, then copies
-// the result tarball out.
-func buildViaDarwinDocker(ctx context.Context, absPath string, nixSystem string) (string, error) {
-	projectDir := filepath.Dir(absPath)
-	nixFileName := filepath.Base(absPath)
+const limaInstanceName = "nix"
+
+// ensureLimaInstance checks that the "nix" Lima instance exists and is running.
+// If it doesn't exist, it creates one from the default template and installs Nix.
+// If it exists but is stopped, it starts it.
+func ensureLimaInstance(ctx context.Context) error {
+	// Check if instance exists
+	cmd := exec.CommandContext(ctx, "limactl", "list", "-q")
+	out := new(bytes.Buffer)
+	cmd.Stdout = out
+	cmd.Stderr = out
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("limactl list failed (%w):\n%s", err, out.String())
+	}
+
+	instances := strings.Split(strings.TrimSpace(out.String()), "\n")
+	exists := false
+	for _, inst := range instances {
+		if strings.TrimSpace(inst) == limaInstanceName {
+			exists = true
+			break
+		}
+	}
+
+	if !exists {
+		// Create instance from default template
+		fmt.Fprintf(os.Stderr, "Creating Lima instance %q (this may take a few minutes)...\n", limaInstanceName)
+		cmd = exec.CommandContext(ctx, "limactl", "start", "--name="+limaInstanceName, "template://default", "--tty=false")
+		out = new(bytes.Buffer)
+		cmd.Stdout = os.Stderr
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("limactl start failed: %w", err)
+		}
+
+		// Install Nix in the instance
+		fmt.Fprintf(os.Stderr, "Installing Nix in Lima instance %q...\n", limaInstanceName)
+		installScript := `sh <(curl -L https://nixos.org/nix/install) --daemon --yes`
+		cmd = exec.CommandContext(ctx, "limactl", "shell", limaInstanceName, "--", "sh", "-c", installScript)
+		cmd.Stdout = os.Stderr
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("nix installation in lima failed: %w", err)
+		}
+
+		return nil
+	}
+
+	// Instance exists — check if it's running
+	cmd = exec.CommandContext(ctx, "limactl", "list", "--format", "{{.Status}}", "--filter", ".name==\""+limaInstanceName+"\"")
+	out = new(bytes.Buffer)
+	cmd.Stdout = out
+	cmd.Stderr = out
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("limactl list status failed (%w):\n%s", err, out.String())
+	}
+
+	status := strings.TrimSpace(out.String())
+	if status != "Running" {
+		fmt.Fprintf(os.Stderr, "Starting Lima instance %q...\n", limaInstanceName)
+		cmd = exec.CommandContext(ctx, "limactl", "start", limaInstanceName)
+		cmd.Stdout = os.Stderr
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("limactl start %s failed: %w", limaInstanceName, err)
+		}
+	}
+
+	return nil
+}
+
+// buildViaDarwinLima runs nix-build inside a Lima VM when on macOS.
+// Lima shares the macOS filesystem automatically, so paths work directly.
+func buildViaDarwinLima(ctx context.Context, absPath string, nixSystem string) (string, error) {
+	if err := ensureLimaInstance(ctx); err != nil {
+		return "", fmt.Errorf("could not ensure lima instance: %w", err)
+	}
 
 	outDir, err := os.MkdirTemp("", "monotool-nix-out-")
 	if err != nil {
 		return "", fmt.Errorf("could not create temp output dir: %w", err)
 	}
 
-	// Run nix-build inside a nixos/nix container.
-	// Mount the project dir (read-only) and an output dir to copy the result.
 	buildScript := fmt.Sprintf(
-		`set -e; result=$(nix-build /project/%s --no-out-link --system %s --option extra-system-features kvm); cp "$result" /out/result.tar.gz`,
-		nixFileName, nixSystem,
+		`set -e; result=$(nix-build %s --no-out-link --system %s); cp "$result" %s/result.tar.gz`,
+		absPath, nixSystem, outDir,
 	)
 
-	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
-		"--device", "/dev/kvm",
-		"-v", projectDir+":/project:ro",
-		"-v", outDir+":/out",
-		"nixos/nix",
-		"sh", "-c", buildScript,
-	)
+	cmd := exec.CommandContext(ctx, "limactl", "shell", limaInstanceName, "--", "sh", "-c", buildScript)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -92,13 +155,13 @@ func buildViaDarwinDocker(ctx context.Context, absPath string, nixSystem string)
 	err = cmd.Run()
 	if err != nil {
 		os.RemoveAll(outDir)
-		return "", fmt.Errorf("nix-build in docker failed (%w):\n%s", err, out.String())
+		return "", fmt.Errorf("nix-build in lima failed (%w):\n%s", err, out.String())
 	}
 
 	resultPath := filepath.Join(outDir, "result.tar.gz")
 	if _, err := os.Stat(resultPath); err != nil {
 		os.RemoveAll(outDir)
-		return "", fmt.Errorf("nix-build docker result not found: %w", err)
+		return "", fmt.Errorf("nix-build lima result not found: %w", err)
 	}
 
 	return resultPath, nil
