@@ -12,13 +12,19 @@
         pkgs = nixpkgs.legacyPackages.${system};
       in
       {
+        packages = {
+          monotool = pkgs.buildGoModule {
+            pname = "monotool";
+            version = self.shortRev or self.dirtyShortRev or "dev";
+            src = ./.;
+            vendorHash = "sha256-g5J9ktcgaD0qEYr9OPCvEZT2G8TIQnjQWCafBb3ccjA=";
+          };
+          default = self.packages.${system}.monotool;
+        };
+
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             go
-            gopls
-            gotools
-            go-tools
-            delve
             docker
             git
           ];
@@ -29,5 +35,9 @@
           '';
         };
       }
-    );
+    ) // {
+      overlays.default = final: prev: {
+        monotool = self.packages.${prev.system}.monotool;
+      };
+    };
 }
