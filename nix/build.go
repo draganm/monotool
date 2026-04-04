@@ -79,7 +79,6 @@ func buildViaDarwinDocker(ctx context.Context, absPath string, nixSystem string)
 	)
 
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
-		"--device", "/dev/kvm",
 		"-v", projectDir+":/project:ro",
 		"-v", outDir+":/out",
 		"nixos/nix",
