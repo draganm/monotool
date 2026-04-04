@@ -7,13 +7,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
 // Build runs nix-build on the given nix file and returns the resolved result path
 // (the Nix store path the result symlink points to).
 // The platform parameter uses Docker format (e.g. "linux/amd64") and is converted
-// to a Nix system string passed as --argstr system.
+// to a Nix system string. On macOS, when targeting Linux, the build is executed
+// inside a Docker container to avoid the need for a remote Linux builder.
 func Build(ctx context.Context, nixFile string, platform string) (string, error) {
 	absPath, err := filepath.Abs(nixFile)
 	if err != nil {
@@ -25,13 +27,22 @@ func Build(ctx context.Context, nixFile string, platform string) (string, error)
 		return "", err
 	}
 
+	if runtime.GOOS == "darwin" && strings.HasPrefix(platform, "linux/") {
+		return buildViaDarwinDocker(ctx, absPath, nixSystem)
+	}
+
+	return buildNative(ctx, absPath, nixSystem)
+}
+
+// buildNative runs nix-build directly on the host.
+func buildNative(ctx context.Context, absPath string, nixSystem string) (string, error) {
 	cmd := exec.CommandContext(ctx, "nix-build", absPath, "--no-out-link", "--system", nixSystem)
 	out := new(bytes.Buffer)
 	errOut := new(bytes.Buffer)
 	cmd.Stdout = out
 	cmd.Stderr = errOut
 
-	err = cmd.Run()
+	err := cmd.Run()
 	if err != nil {
 		return "", fmt.Errorf("nix-build failed (%w):\n%s", err, errOut.String())
 	}
@@ -41,9 +52,52 @@ func Build(ctx context.Context, nixFile string, platform string) (string, error)
 		return "", fmt.Errorf("nix-build returned empty output")
 	}
 
-	// Verify the result path exists
 	if _, err := os.Stat(resultPath); err != nil {
 		return "", fmt.Errorf("nix-build result path does not exist: %w", err)
+	}
+
+	return resultPath, nil
+}
+
+// buildViaDarwinDocker runs nix-build inside a Linux Docker container when on macOS.
+// It mounts the project directory and a temporary output directory, then copies
+// the result tarball out.
+func buildViaDarwinDocker(ctx context.Context, absPath string, nixSystem string) (string, error) {
+	projectDir := filepath.Dir(absPath)
+	nixFileName := filepath.Base(absPath)
+
+	outDir, err := os.MkdirTemp("", "monotool-nix-out-")
+	if err != nil {
+		return "", fmt.Errorf("could not create temp output dir: %w", err)
+	}
+
+	// Run nix-build inside a nixos/nix container.
+	// Mount the project dir (read-only) and an output dir to copy the result.
+	buildScript := fmt.Sprintf(
+		`set -e; result=$(nix-build /project/%s --no-out-link --system %s); cp "$result" /out/result.tar.gz`,
+		nixFileName, nixSystem,
+	)
+
+	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
+		"-v", projectDir+":/project:ro",
+		"-v", outDir+":/out",
+		"nixos/nix",
+		"sh", "-c", buildScript,
+	)
+	out := new(bytes.Buffer)
+	cmd.Stdout = out
+	cmd.Stderr = out
+
+	err = cmd.Run()
+	if err != nil {
+		os.RemoveAll(outDir)
+		return "", fmt.Errorf("nix-build in docker failed (%w):\n%s", err, out.String())
+	}
+
+	resultPath := filepath.Join(outDir, "result.tar.gz")
+	if _, err := os.Stat(resultPath); err != nil {
+		os.RemoveAll(outDir)
+		return "", fmt.Errorf("nix-build docker result not found: %w", err)
 	}
 
 	return resultPath, nil

@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/draganm/gosha/gosha"
 	"github.com/draganm/monotool/docker"
@@ -113,6 +115,11 @@ func (i *Image) Build(ctx context.Context, projectRoot string) error {
 		resultPath, err := nix.Build(ctx, filepath.Join(projectRoot, i.Nix.File), platform)
 		if err != nil {
 			return fmt.Errorf("while building nix image %s: %w", imageWithTag, err)
+		}
+
+		// Clean up temp dir from Docker-based builds (path contains monotool-nix-out-)
+		if strings.Contains(resultPath, "monotool-nix-out-") {
+			defer os.RemoveAll(filepath.Dir(resultPath))
 		}
 
 		err = nix.DockerLoad(ctx, resultPath, imageWithTag)
