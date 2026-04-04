@@ -5,28 +5,24 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"strings"
 )
 
 func cloneRepo(ctx context.Context, url string, dir string) error {
-	cmd := exec.Command("git", "clone", "--depth", "1", "--quiet", url, dir)
+	cmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", "--quiet", url, dir)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
 	cmd.Stderr = out
 
 	err := cmd.Run()
 	if err != nil {
-		b := new(strings.Builder)
-		b.WriteString("git clone failed: %w\n")
-		b.Write(out.Bytes())
-		return fmt.Errorf(b.String(), err)
+		return fmt.Errorf("git clone failed: %w\n%s", err, out.String())
 	}
 
 	return nil
 }
 
 func createBranch(ctx context.Context, dir string, branchName string) error {
-	cmd := exec.Command("git", "checkout", "-q", "-b", branchName)
+	cmd := exec.CommandContext(ctx, "git", "checkout", "-q", "-b", branchName)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -34,17 +30,14 @@ func createBranch(ctx context.Context, dir string, branchName string) error {
 
 	err := cmd.Run()
 	if err != nil {
-		b := new(strings.Builder)
-		b.WriteString("git create branch failed: %w\n")
-		b.Write(out.Bytes())
-		return fmt.Errorf(b.String(), err)
+		return fmt.Errorf("git create branch failed: %w\n%s", err, out.String())
 	}
 
 	return nil
 }
 
 func addFilesToGit(ctx context.Context, dir string) error {
-	cmd := exec.Command("git", "add", ".")
+	cmd := exec.CommandContext(ctx, "git", "add", ".")
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -52,17 +45,14 @@ func addFilesToGit(ctx context.Context, dir string) error {
 
 	err := cmd.Run()
 	if err != nil {
-		b := new(strings.Builder)
-		b.WriteString("git add failed: %w\n")
-		b.Write(out.Bytes())
-		return fmt.Errorf(b.String(), err)
+		return fmt.Errorf("git add failed: %w\n%s", err, out.String())
 	}
 
 	return nil
 }
 
 func createCommit(ctx context.Context, dir string, message string) error {
-	cmd := exec.Command("git", "commit", "-m", message)
+	cmd := exec.CommandContext(ctx, "git", "commit", "-m", message)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -70,17 +60,14 @@ func createCommit(ctx context.Context, dir string, message string) error {
 
 	err := cmd.Run()
 	if err != nil {
-		b := new(strings.Builder)
-		b.WriteString("git commit failed: %w\n")
-		b.Write(out.Bytes())
-		return fmt.Errorf(b.String(), err)
+		return fmt.Errorf("git commit failed: %w\n%s", err, out.String())
 	}
 
 	return nil
 }
 
 func pushToOrigin(ctx context.Context, dir string, branchName string) error {
-	cmd := exec.Command("git", "push", "origin", branchName)
+	cmd := exec.CommandContext(ctx, "git", "push", "origin", branchName)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -88,10 +75,7 @@ func pushToOrigin(ctx context.Context, dir string, branchName string) error {
 
 	err := cmd.Run()
 	if err != nil {
-		b := new(strings.Builder)
-		b.WriteString("git push failed: %w\n")
-		b.Write(out.Bytes())
-		return fmt.Errorf(b.String(), err)
+		return fmt.Errorf("git push failed: %w\n%s", err, out.String())
 	}
 
 	return nil
@@ -106,10 +90,7 @@ func createPR(ctx context.Context, dir string, title, description string) (strin
 
 	err := cmd.Run()
 	if err != nil {
-		b := new(strings.Builder)
-		b.WriteString("tea pr create: %w\n")
-		b.Write(out.Bytes())
-		return "", fmt.Errorf(b.String(), err)
+		return "", fmt.Errorf("tea pr create failed: %w\n%s", err, out.String())
 	}
 
 	return out.String(), nil

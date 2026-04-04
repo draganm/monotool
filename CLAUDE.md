@@ -63,7 +63,7 @@ go build -o bin/monotool main.go
 
 ### Key Implementation Details
 
-- **SHA-based Versioning**: Images are tagged with first 5 bytes of package SHA for deterministic versioning
+- **SHA-based Versioning**: Images are tagged with first 8 bytes of package SHA for deterministic versioning
 - **Concurrent Operations**: Uses goroutines with semaphores (4 for builds, 10 for image checks)
 - **Docker Context**: Builds use custom context with Go module files
 - **Template System**: Rollouts use Go templates with image references passed as values
