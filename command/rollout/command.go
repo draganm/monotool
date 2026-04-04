@@ -96,7 +96,7 @@ func Command() *cli.Command {
 					state := atomic.Pointer[string]{}
 					state.Store(pointerOf("initializing"))
 
-					imageName, err := im.DockerImageName(cfg.ProjectRoot)
+					imageName, err := im.DockerImageName(egCtx, cfg.ProjectRoot)
 					if err != nil {
 						return fmt.Errorf("could not calculate docker image of %s: %w", n, err)
 					}

@@ -9,33 +9,46 @@ import (
 
 	"github.com/draganm/gosha/gosha"
 	"github.com/draganm/monotool/docker"
+	"github.com/draganm/monotool/nix"
 )
 
 type Image struct {
-	Go          *GoImage `yaml:"go"`
-	DockerImage string   `yaml:"dockerImage"`
-	Platform    string   `yaml:"platform"`
+	Go          *GoImage  `yaml:"go"`
+	Nix         *NixImage `yaml:"nix"`
+	DockerImage string    `yaml:"dockerImage"`
+	Platform    string    `yaml:"platform"`
 }
 
 type GoImage struct {
 	Package string `yaml:"package"`
 }
 
-func (i *Image) calculateHash(projectRoot string) ([]byte, error) {
-	if i.Go == nil {
-		return nil, errors.New("no go configuration for the container found")
-	}
+type NixImage struct {
+	File string `yaml:"file"`
+}
 
-	sha, err := gosha.CalculatePackageSHA(filepath.Join(projectRoot, i.Go.Package), false, false)
-	if err != nil {
-		return nil, fmt.Errorf("could not calculate sha of the go module: %w", err)
+func (i *Image) calculateTag(ctx context.Context, projectRoot string) (string, error) {
+	switch {
+	case i.Go != nil:
+		sha, err := gosha.CalculatePackageSHA(filepath.Join(projectRoot, i.Go.Package), false, false)
+		if err != nil {
+			return "", fmt.Errorf("could not calculate sha of the go module: %w", err)
+		}
+		return fmt.Sprintf("%x", sha[:8]), nil
+	case i.Nix != nil:
+		drvPath, err := nix.Instantiate(ctx, filepath.Join(projectRoot, i.Nix.File))
+		if err != nil {
+			return "", fmt.Errorf("could not instantiate nix derivation: %w", err)
+		}
+		return nix.DrvHash(drvPath), nil
+	default:
+		return "", errors.New("no go or nix configuration for the image found")
 	}
-	return sha, nil
 }
 
 func (i *Image) IsAlreadyBuilt(ctx context.Context, projectRoot string) (bool, error) {
 
-	imageWithTag, err := i.DockerImageName(projectRoot)
+	imageWithTag, err := i.DockerImageName(ctx, projectRoot)
 	if err != nil {
 		return false, err
 	}
@@ -62,34 +75,43 @@ func (i *Image) IsAlreadyBuilt(ctx context.Context, projectRoot string) (bool, e
 
 }
 
-func (i *Image) DockerImageName(projectRoot string) (string, error) {
-	hash, err := i.calculateHash(projectRoot)
+func (i *Image) DockerImageName(ctx context.Context, projectRoot string) (string, error) {
+	tag, err := i.calculateTag(ctx, projectRoot)
 	if err != nil {
 		return "", fmt.Errorf("could not calculate hash: %w", err)
 	}
 
-	imageName := fmt.Sprintf("%s:%x", i.DockerImage, hash[:8])
-
-	return imageName, nil
+	return fmt.Sprintf("%s:%s", i.DockerImage, tag), nil
 }
 
 func (i *Image) Build(ctx context.Context, projectRoot string) error {
-
-	imageWithTag, err := i.DockerImageName(projectRoot)
+	imageWithTag, err := i.DockerImageName(ctx, projectRoot)
 	if err != nil {
 		return err
 	}
 
-	platform := i.Platform
-	if platform == "" {
-		platform = "linux/amd64"
-	}
+	switch {
+	case i.Go != nil:
+		platform := i.Platform
+		if platform == "" {
+			platform = "linux/amd64"
+		}
 
-	err = docker.BuildGoMod(ctx, path.Join(projectRoot, i.Go.Package), imageWithTag, platform)
-	if err != nil {
-		return fmt.Errorf("while building image %s: %w", imageWithTag, err)
+		err = docker.BuildGoMod(ctx, path.Join(projectRoot, i.Go.Package), imageWithTag, platform)
+		if err != nil {
+			return fmt.Errorf("while building image %s: %w", imageWithTag, err)
+		}
+	case i.Nix != nil:
+		resultPath, err := nix.Build(ctx, filepath.Join(projectRoot, i.Nix.File))
+		if err != nil {
+			return fmt.Errorf("while building nix image %s: %w", imageWithTag, err)
+		}
+
+		err = nix.DockerLoad(ctx, resultPath, imageWithTag)
+		if err != nil {
+			return fmt.Errorf("while loading nix image %s: %w", imageWithTag, err)
+		}
 	}
 
 	return nil
-
 }
