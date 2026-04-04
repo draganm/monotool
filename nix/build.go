@@ -12,13 +12,20 @@ import (
 
 // Build runs nix-build on the given nix file and returns the resolved result path
 // (the Nix store path the result symlink points to).
-func Build(ctx context.Context, nixFile string) (string, error) {
+// The platform parameter uses Docker format (e.g. "linux/amd64") and is converted
+// to a Nix system string passed as --argstr system.
+func Build(ctx context.Context, nixFile string, platform string) (string, error) {
 	absPath, err := filepath.Abs(nixFile)
 	if err != nil {
 		return "", fmt.Errorf("could not resolve nix file path: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "nix-build", absPath, "--no-out-link")
+	nixSystem, err := dockerPlatformToNixSystem(platform)
+	if err != nil {
+		return "", err
+	}
+
+	cmd := exec.CommandContext(ctx, "nix-build", absPath, "--no-out-link", "--argstr", "system", nixSystem)
 	out := new(bytes.Buffer)
 	errOut := new(bytes.Buffer)
 	cmd.Stdout = out
@@ -74,6 +81,23 @@ func DockerLoad(ctx context.Context, archivePath string, imageRef string) error 
 	}
 
 	return nil
+}
+
+// dockerPlatformToNixSystem converts a Docker platform string (e.g. "linux/amd64")
+// to a Nix system string (e.g. "x86_64-linux").
+func dockerPlatformToNixSystem(platform string) (string, error) {
+	switch platform {
+	case "linux/amd64":
+		return "x86_64-linux", nil
+	case "linux/arm64":
+		return "aarch64-linux", nil
+	case "linux/arm/v7":
+		return "armv7l-linux", nil
+	case "linux/386":
+		return "i686-linux", nil
+	default:
+		return "", fmt.Errorf("unsupported platform for nix build: %s", platform)
+	}
 }
 
 // parseLoadedImage extracts the image reference from docker load output.

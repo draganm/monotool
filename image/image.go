@@ -36,7 +36,11 @@ func (i *Image) calculateTag(ctx context.Context, projectRoot string) (string, e
 		}
 		return fmt.Sprintf("%x", sha[:8]), nil
 	case i.Nix != nil:
-		drvPath, err := nix.Instantiate(ctx, filepath.Join(projectRoot, i.Nix.File))
+		platform := i.Platform
+		if platform == "" {
+			platform = "linux/amd64"
+		}
+		drvPath, err := nix.Instantiate(ctx, filepath.Join(projectRoot, i.Nix.File), platform)
 		if err != nil {
 			return "", fmt.Errorf("could not instantiate nix derivation: %w", err)
 		}
@@ -102,7 +106,11 @@ func (i *Image) Build(ctx context.Context, projectRoot string) error {
 			return fmt.Errorf("while building image %s: %w", imageWithTag, err)
 		}
 	case i.Nix != nil:
-		resultPath, err := nix.Build(ctx, filepath.Join(projectRoot, i.Nix.File))
+		platform := i.Platform
+		if platform == "" {
+			platform = "linux/amd64"
+		}
+		resultPath, err := nix.Build(ctx, filepath.Join(projectRoot, i.Nix.File), platform)
 		if err != nil {
 			return fmt.Errorf("while building nix image %s: %w", imageWithTag, err)
 		}
