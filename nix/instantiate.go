@@ -23,7 +23,7 @@ func Instantiate(ctx context.Context, nixFile string, platform string) (string, 
 		return "", err
 	}
 
-	cmd := exec.CommandContext(ctx, "nix-instantiate", absPath, "--argstr", "system", nixSystem)
+	cmd := exec.CommandContext(ctx, "nix-instantiate", absPath, "--system", nixSystem)
 	out := new(bytes.Buffer)
 	errOut := new(bytes.Buffer)
 	cmd.Stdout = out
