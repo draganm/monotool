@@ -74,11 +74,12 @@ func buildViaDarwinDocker(ctx context.Context, absPath string, nixSystem string)
 	// Run nix-build inside a nixos/nix container.
 	// Mount the project dir (read-only) and an output dir to copy the result.
 	buildScript := fmt.Sprintf(
-		`set -e; result=$(nix-build /project/%s --no-out-link --system %s); cp "$result" /out/result.tar.gz`,
+		`set -e; result=$(nix-build /project/%s --no-out-link --system %s --option extra-system-features kvm); cp "$result" /out/result.tar.gz`,
 		nixFileName, nixSystem,
 	)
 
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
+		"--device", "/dev/kvm",
 		"-v", projectDir+":/project:ro",
 		"-v", outDir+":/out",
 		"nixos/nix",
