@@ -92,7 +92,7 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 
 	removeOldManifests := func(dir string) error {
 
-		if !r.PruneTargets {
+		if !r.PruneTargets || len(allDirs) == 0 {
 			return nil
 		}
 

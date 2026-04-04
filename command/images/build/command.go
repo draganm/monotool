@@ -1,17 +1,10 @@
 package build
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"path"
-	"path/filepath"
 	"sort"
-	"time"
 
-	"github.com/draganm/gosha/gosha"
 	"github.com/draganm/monotool/config"
-	"github.com/draganm/monotool/docker"
 	"github.com/samber/lo"
 	"github.com/urfave/cli/v2"
 )
@@ -31,39 +24,30 @@ func Command() *cli.Command {
 
 				image := cfg.Images[cn]
 
-				fmt.Println(cn + ":")
-				if image.Go == nil {
-					return errors.New("no go configuration for the container found")
-				}
-
-				sha, err := gosha.CalculatePackageSHA(filepath.Join(cfg.ProjectRoot, image.Go.Package), false, false)
+				imageName, err := image.DockerImageName(cfg.ProjectRoot)
 				if err != nil {
-					return fmt.Errorf("could not calculate sha of the go module: %w", err)
+					return fmt.Errorf("could not calculate docker image name for %s: %w", cn, err)
 				}
 
-				fmt.Printf("\tmodule sha: %x\n", sha)
+				fmt.Println(cn + ":")
+				fmt.Println("\timage name:", imageName)
 
-				imageWithTag := fmt.Sprintf("%s:%x", image.DockerImage, sha[:5])
-				fmt.Println("\timage name:", imageWithTag)
+				alreadyBuilt, err := image.IsAlreadyBuilt(ctx.Context, cfg.ProjectRoot)
+				if err != nil {
+					return fmt.Errorf("could not check if image %s is already built: %w", cn, err)
+				}
 
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				err = docker.Pull(ctx, imageWithTag)
-				if err == docker.ErrImageNotFound {
-
-					err = docker.BuildGoMod(ctx, path.Join(cfg.ProjectRoot, image.Go.Package), imageWithTag, "linux/amd64")
-					if err != nil {
-						cancel()
-						return err
-					}
-					cancel()
+				if alreadyBuilt {
+					fmt.Println("\talready built")
 					continue
 				}
 
+				fmt.Println("\tbuilding...")
+				err = image.Build(ctx.Context, cfg.ProjectRoot)
 				if err != nil {
-					cancel()
-					return fmt.Errorf("while pulling image: %w", err)
+					return fmt.Errorf("could not build image %s: %w", cn, err)
 				}
-				cancel()
+				fmt.Println("\tdone")
 
 			}
 

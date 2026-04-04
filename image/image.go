@@ -14,6 +14,7 @@ import (
 type Image struct {
 	Go          *GoImage `yaml:"go"`
 	DockerImage string   `yaml:"dockerImage"`
+	Platform    string   `yaml:"platform"`
 }
 
 type GoImage struct {
@@ -79,11 +80,12 @@ func (i *Image) Build(ctx context.Context, projectRoot string) error {
 		return err
 	}
 
-	err = docker.BuildGoMod(ctx, path.Join(projectRoot, i.Go.Package), imageWithTag, "linux/amd64")
-	if err == docker.ErrImageNotFound {
-		return nil
+	platform := i.Platform
+	if platform == "" {
+		platform = "linux/amd64"
 	}
 
+	err = docker.BuildGoMod(ctx, path.Join(projectRoot, i.Go.Package), imageWithTag, platform)
 	if err != nil {
 		return fmt.Errorf("while building image %s: %w", imageWithTag, err)
 	}

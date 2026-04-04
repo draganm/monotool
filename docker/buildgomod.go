@@ -55,8 +55,10 @@ func BuildGoMod(ctx context.Context, mainPackagePath string, imageName string, p
 	shortPath := strings.TrimPrefix(fullPath, path)
 	shortPath = strings.TrimPrefix(shortPath, "/")
 
-	templ := template.New("dockerfile")
-	templ.Parse(dockerfileTemplate)
+	templ, err := template.New("dockerfile").Parse(dockerfileTemplate)
+	if err != nil {
+		return fmt.Errorf("could not parse dockerfile template: %w", err)
+	}
 	rendered := &bytes.Buffer{}
 	err = templ.Execute(rendered, DockerfileData{
 		PackagePath: shortPath,
@@ -72,6 +74,7 @@ func BuildGoMod(ctx context.Context, mainPackagePath string, imageName string, p
 		return fmt.Errorf("could not create temp dockerfile: %w", err)
 	}
 
+	defer os.Remove(tempDockerfile.Name())
 	defer tempDockerfile.Close()
 
 	_, err = tempDockerfile.Write(rendered.Bytes())

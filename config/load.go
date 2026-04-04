@@ -27,6 +27,8 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("failed to stat %s: %w", configPath, err)
 		}
 
+		defer f.Close()
+
 		cfg := &Config{}
 		err = yaml.NewDecoder(f).Decode(cfg)
 		if err != nil {

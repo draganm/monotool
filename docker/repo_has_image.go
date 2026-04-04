@@ -27,8 +27,6 @@ type manifestStoreProvider interface {
 // registry
 func newRegistryClient(dockerCLI command.Cli, allowInsecure bool) registryclient.RegistryClient {
 	if msp, ok := dockerCLI.(manifestStoreProvider); ok {
-		fmt.Println("using manifest store provider")
-		// manifestStoreProvider is used in tests to provide a dummy store.
 		return msp.RegistryClient(allowInsecure)
 	}
 	resolver := func(ctx context.Context, index *registry.IndexInfo) registry.AuthConfig {
