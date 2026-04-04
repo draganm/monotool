@@ -10,13 +10,20 @@ import (
 )
 
 // Instantiate runs nix-instantiate on the given nix file and returns the derivation store path.
-func Instantiate(ctx context.Context, nixFile string) (string, error) {
+// The platform parameter uses Docker format (e.g. "linux/amd64") and is converted
+// to a Nix system string passed as --argstr system.
+func Instantiate(ctx context.Context, nixFile string, platform string) (string, error) {
 	absPath, err := filepath.Abs(nixFile)
 	if err != nil {
 		return "", fmt.Errorf("could not resolve nix file path: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "nix-instantiate", absPath)
+	nixSystem, err := dockerPlatformToNixSystem(platform)
+	if err != nil {
+		return "", err
+	}
+
+	cmd := exec.CommandContext(ctx, "nix-instantiate", absPath, "--argstr", "system", nixSystem)
 	out := new(bytes.Buffer)
 	errOut := new(bytes.Buffer)
 	cmd.Stdout = out
