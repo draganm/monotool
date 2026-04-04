@@ -25,7 +25,7 @@ func Build(ctx context.Context, nixFile string, platform string) (string, error)
 		return "", err
 	}
 
-	cmd := exec.CommandContext(ctx, "nix-build", absPath, "--no-out-link", "--argstr", "system", nixSystem)
+	cmd := exec.CommandContext(ctx, "nix-build", absPath, "--no-out-link", "--system", nixSystem)
 	out := new(bytes.Buffer)
 	errOut := new(bytes.Buffer)
 	cmd.Stdout = out
