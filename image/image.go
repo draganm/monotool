@@ -15,10 +15,11 @@ import (
 )
 
 type Image struct {
-	Go          *GoImage  `yaml:"go"`
-	Nix         *NixImage `yaml:"nix"`
-	DockerImage string    `yaml:"dockerImage"`
-	Platform    string    `yaml:"platform"`
+	Go          *GoImage     `yaml:"go"`
+	Nix         *NixImage    `yaml:"nix"`
+	Docker      *DockerImage `yaml:"docker"`
+	DockerImage string       `yaml:"dockerImage"`
+	Platform    string       `yaml:"platform"`
 }
 
 type GoImage struct {
@@ -27,6 +28,28 @@ type GoImage struct {
 
 type NixImage struct {
 	File string `yaml:"file"`
+}
+
+// DockerImage builds a container image from an arbitrary Dockerfile + context.
+// Context is resolved relative to the project root. Dockerfile is resolved
+// relative to the context directory (matching `docker build -f`'s convention)
+// and defaults to "Dockerfile" if omitted.
+type DockerImage struct {
+	Context    string `yaml:"context"`
+	Dockerfile string `yaml:"dockerfile"`
+}
+
+// resolvePaths returns the absolute context directory and Dockerfile path for
+// a Docker image configuration, applying the default "Dockerfile" name when
+// no explicit dockerfile is set.
+func (d *DockerImage) resolvePaths(projectRoot string) (contextDir, dockerfilePath string) {
+	contextDir = filepath.Join(projectRoot, d.Context)
+	dockerfileRel := d.Dockerfile
+	if dockerfileRel == "" {
+		dockerfileRel = "Dockerfile"
+	}
+	dockerfilePath = filepath.Join(contextDir, dockerfileRel)
+	return contextDir, dockerfilePath
 }
 
 func (i *Image) calculateTag(ctx context.Context, projectRoot string) (string, error) {
@@ -47,8 +70,15 @@ func (i *Image) calculateTag(ctx context.Context, projectRoot string) (string, e
 			return "", fmt.Errorf("could not instantiate nix derivation: %w", err)
 		}
 		return nix.DrvHash(drvPath), nil
+	case i.Docker != nil:
+		contextDir, dockerfilePath := i.Docker.resolvePaths(projectRoot)
+		tag, err := docker.HashBuildContext(contextDir, dockerfilePath)
+		if err != nil {
+			return "", fmt.Errorf("could not hash docker build context: %w", err)
+		}
+		return tag, nil
 	default:
-		return "", errors.New("no go or nix configuration for the image found")
+		return "", errors.New("no go, nix, or docker configuration for the image found")
 	}
 }
 
@@ -125,6 +155,16 @@ func (i *Image) Build(ctx context.Context, projectRoot string) error {
 		err = nix.DockerLoad(ctx, resultPath, imageWithTag)
 		if err != nil {
 			return fmt.Errorf("while loading nix image %s: %w", imageWithTag, err)
+		}
+	case i.Docker != nil:
+		platform := i.Platform
+		if platform == "" {
+			platform = "linux/amd64"
+		}
+		contextDir, dockerfilePath := i.Docker.resolvePaths(projectRoot)
+		err = docker.BuildDockerfile(ctx, contextDir, dockerfilePath, imageWithTag, platform)
+		if err != nil {
+			return fmt.Errorf("while building docker image %s: %w", imageWithTag, err)
 		}
 	}
 
