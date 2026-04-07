@@ -37,13 +37,21 @@ func Load() (*Config, error) {
 		cfg.ProjectRoot = dir
 
 		for name, img := range cfg.Images {
-			hasGo := img.Go != nil
-			hasNix := img.Nix != nil
-			if hasGo && hasNix {
-				return nil, fmt.Errorf("image %q has both go and nix configuration, only one is allowed", name)
+			count := 0
+			if img.Go != nil {
+				count++
 			}
-			if !hasGo && !hasNix {
-				return nil, fmt.Errorf("image %q has neither go nor nix configuration, one is required", name)
+			if img.Nix != nil {
+				count++
+			}
+			if img.Docker != nil {
+				count++
+			}
+			if count > 1 {
+				return nil, fmt.Errorf("image %q has more than one of go/nix/docker configuration, exactly one is required", name)
+			}
+			if count == 0 {
+				return nil, fmt.Errorf("image %q has none of go/nix/docker configuration, exactly one is required", name)
 			}
 		}
 

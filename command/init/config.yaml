@@ -3,3 +3,8 @@ images:
     dockerImage: <please insert docker image (without a tag) here>
     go:
       package: <please enter the directory of the go main module here>
+  # image2:
+  #   dockerImage: <please insert docker image (without a tag) here>
+  #   docker:
+  #     context: <path to docker build context, relative to project root>
+  #     # dockerfile: <optional Dockerfile path, relative to the context directory; defaults to "Dockerfile">

@@ -26,6 +26,11 @@ images:
     dockerImage: registry.example.com/mynixservice
     nix:
       file: nix/mynixservice.nix
+  mydockerservice:
+    dockerImage: registry.example.com/mydockerservice
+    docker:
+      context: ./services/mydockerservice
+      # dockerfile: Dockerfile.prod   # optional, relative to context; defaults to "Dockerfile"
 
 rollouts:
   production:
@@ -43,7 +48,7 @@ rollouts:
 
 ## Image Types
 
-Each image must use exactly one build method: `go` or `nix`.
+Each image must use exactly one build method: `go`, `nix`, or `docker`.
 
 ### Go Images
 
@@ -102,6 +107,25 @@ pkgs.dockerTools.buildLayeredImage {
 
 The Nix expression must evaluate to a Docker image tarball (the output of `dockerTools.buildLayeredImage` or `dockerTools.buildImage`).
 
+### Docker Images
+
+Builds a Docker image from an arbitrary `Dockerfile` + context directory using `docker buildx`. Use this when your image doesn't fit the Go template or a Nix derivation — e.g., multi-language projects, images based on existing Dockerfiles, or anything with custom build steps.
+
+```yaml
+images:
+  web:
+    dockerImage: registry.example.com/web
+    docker:
+      context: ./services/web
+      # dockerfile: Dockerfile.prod   # optional, relative to the context directory
+    platform: linux/amd64             # optional, defaults to linux/amd64
+```
+
+- `context` is resolved **relative to the project root** (matching `go.package` and `nix.file`).
+- `dockerfile` is resolved **relative to the context directory**, matching Docker's own `docker build -f` convention. If omitted, `Dockerfile` inside the context is used.
+
+The image is tagged with a deterministic hash computed from the Dockerfile contents plus a sorted manifest of the context directory. `.dockerignore` is honored using the same matcher Docker/BuildKit itself uses, so the tag only changes when files Docker would actually send to the daemon change. Negation patterns (`!keep.txt`) work as expected.
+
 ## Commands
 
 ```bash
@@ -126,4 +150,5 @@ The `rollout` command builds all images concurrently, pushes them to the registr
 
 - **Go images:** Docker daemon running, `docker` CLI available
 - **Nix images:** `nix-build` and `nix-instantiate` available, Docker daemon running
+- **Docker images:** Docker daemon running, `docker buildx` available
 - **Rollouts:** `git` in PATH; `tea` CLI for Gitea PR creation

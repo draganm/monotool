@@ -17,7 +17,10 @@ require (
 	helm.sh/helm/v3 v3.13.2
 )
 
-require github.com/docker/docker v28.1.1+incompatible
+require (
+	github.com/docker/docker v28.1.1+incompatible
+	github.com/moby/patternmatcher v0.6.1
+)
 
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6 // indirect
