@@ -28,8 +28,6 @@ monotool init
 This creates `.monotool/config.yaml` in the current directory. Edit it to describe your images and rollouts, then:
 
 ```bash
-monotool images list      # show what's defined and whether each image is built
-monotool images build     # build everything that isn't already built
 monotool rollout -m "ship the new login flow"
 ```
 
@@ -247,8 +245,6 @@ A rollout must configure exactly one of the two — having both, or neither, is 
 
 ```bash
 monotool init                       # write .monotool/config.yaml in the current directory
-monotool images list                # for each image: show the computed tag and whether it's already pushed
-monotool images build               # build every image whose tag isn't already available locally or in the registry
 monotool rollout [name] -m "..."    # build, push, and open a PR for the named rollout (name optional if only one exists)
 ```
 

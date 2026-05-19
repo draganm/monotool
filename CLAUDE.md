@@ -30,12 +30,6 @@ go build -o bin/monotool main.go
 # Initialize a new monotool configuration
 ./monotool init
 
-# Build Docker images defined in config
-./monotool images build
-
-# List configured images
-./monotool images list  
-
 # Deploy/rollout images
 ./monotool rollout [rollout-name]
 ```
