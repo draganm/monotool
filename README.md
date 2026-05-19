@@ -8,13 +8,13 @@ In a monorepo you typically have many services that share code. Monotool lets yo
 
 Concretely, monotool takes care of three things:
 
-1. **Building images.** Go modules, Nix derivations, or arbitrary `Dockerfile`s are all first-class. Builds run concurrently.
+1. **Building images.** Go modules or arbitrary `Dockerfile`s are all first-class. Builds run concurrently.
 2. **Tagging them deterministically.** The tag for an image is a hash of its source — same source, same tag, every time. If the tag already exists in the registry, the build is skipped.
 3. **Rolling them out.** It clones a manifests repository, renders templates with the freshly-computed image references, opens a PR, and prints the URL.
 
 ## Philosophy
 
-- **Source content is the version.** Tags come from hashes of the inputs (Go package source, Nix derivation, Dockerfile + build context). This makes rebuilds idempotent and rollouts diff-friendly — if nothing changed, the manifests are identical.
+- **Source content is the version.** Tags come from hashes of the inputs (Go package source, Dockerfile + build context). This makes rebuilds idempotent and rollouts diff-friendly — if nothing changed, the manifests are identical.
 - **Do as little work as possible.** Before building, monotool checks whether the image already exists locally or in the registry. If yes, it's reused; if no, it's built, pushed, and tagged.
 - **GitOps, not `kubectl apply`.** Rollouts produce a commit and a pull request against a manifests repository. Promotion, review, and rollback are then just git operations.
 - **One config file.** Everything lives in `.monotool/config.yaml`. The file is discovered by walking up from the current directory, so the tool works from any subdirectory of the monorepo.
@@ -42,11 +42,6 @@ images:
     go:
       package: ./cmd/api
 
-  worker:
-    dockerImage: registry.example.com/worker
-    nix:
-      file: nix/worker.nix
-
   web:
     dockerImage: registry.example.com/web
     docker:
@@ -63,7 +58,7 @@ rollouts:
 
 ## Images
 
-Every image entry has a `dockerImage` (the registry path **without** a tag) and exactly one of `go`, `nix`, or `docker`. The tag is computed automatically.
+Every image entry has a `dockerImage` (the registry path **without** a tag) and exactly one of `go` or `docker`. The tag is computed automatically.
 
 ```yaml
 images:
@@ -85,47 +80,9 @@ images:
       package: ./cmd/api
 ```
 
-### Nix images
-
-Builds a Docker image from a Nix expression that evaluates to a tarball (the output of `pkgs.dockerTools.buildLayeredImage` or `buildImage`). The tag is derived from the `.drv` path of the instantiated derivation, so anything that would change the build changes the tag.
-
-```yaml
-images:
-  worker:
-    dockerImage: registry.example.com/worker
-    nix:
-      file: nix/worker.nix
-```
-
-Example `nix/worker.nix`:
-
-```nix
-{ pkgs ? import <nixpkgs> {} }:
-
-let
-  app = pkgs.buildGoModule {
-    pname = "worker";
-    version = "0.1.0";
-    src = ../.;
-    vendorHash = null;
-    subPackages = [ "cmd/worker" ];
-  };
-in
-pkgs.dockerTools.buildLayeredImage {
-  name = "worker";
-  tag = "latest";
-  contents = [ app pkgs.cacert ];
-  config.Entrypoint = [ "${app}/bin/worker" ];
-}
-```
-
-On macOS, cross-compiling for Linux requires no manual setup: monotool transparently provisions a [Lima](https://lima-vm.io/) VM named `nix`, installs Nix into it, and runs `nix-build` there. The resulting tarball is then loaded into the host Docker daemon.
-
-Supported platforms: `linux/amd64`, `linux/arm64`, `linux/arm/v7`, `linux/386`.
-
 ### Docker images
 
-Builds an arbitrary `Dockerfile` against a build context using `docker buildx`. Use this when neither the Go template nor a Nix derivation fits — multi-language services, legacy projects, anything with custom build steps.
+Builds an arbitrary `Dockerfile` against a build context using `docker buildx`. Use this when the Go template doesn't fit — multi-language services, legacy projects, anything with custom build steps.
 
 ```yaml
 images:
@@ -224,6 +181,5 @@ monotool rollout [name] -m "..."    # build, push, and open a PR for the named r
 ## Requirements
 
 - **Go images:** Docker daemon running, `docker` CLI with `buildx` available.
-- **Nix images:** `nix-build` and `nix-instantiate` available. On macOS, `limactl` is required and a `nix` Lima instance is created on first use.
 - **Docker images:** Docker daemon running, `docker buildx` available.
 - **Rollouts:** `git` in `PATH`. `tea` for Gitea PRs, `gh` for GitHub PRs — only the one matching your configured provider.

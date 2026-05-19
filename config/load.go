@@ -41,17 +41,14 @@ func Load() (*Config, error) {
 			if img.Go != nil {
 				count++
 			}
-			if img.Nix != nil {
-				count++
-			}
 			if img.Docker != nil {
 				count++
 			}
 			if count > 1 {
-				return nil, fmt.Errorf("image %q has more than one of go/nix/docker configuration, exactly one is required", name)
+				return nil, fmt.Errorf("image %q has more than one of go/docker configuration, exactly one is required", name)
 			}
 			if count == 0 {
-				return nil, fmt.Errorf("image %q has none of go/nix/docker configuration, exactly one is required", name)
+				return nil, fmt.Errorf("image %q has none of go/docker configuration, exactly one is required", name)
 			}
 		}
 
