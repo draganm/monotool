@@ -10,7 +10,7 @@ Concretely, monotool takes care of three things:
 
 1. **Building images.** Go modules, Nix derivations, or arbitrary `Dockerfile`s are all first-class. Builds run concurrently.
 2. **Tagging them deterministically.** The tag for an image is a hash of its source — same source, same tag, every time. If the tag already exists in the registry, the build is skipped.
-3. **Rolling them out.** It clones a manifests repository, renders templates and Helm charts with the freshly-computed image references, opens a PR, and prints the URL.
+3. **Rolling them out.** It clones a manifests repository, renders templates with the freshly-computed image references, opens a PR, and prints the URL.
 
 ## Philosophy
 
@@ -59,15 +59,6 @@ rollouts:
     templates: .monotool/templates
     targetPath: manifests/production
     pruneTargets: true
-    helmCharts:
-      - repository: https://charts.example.com
-        chart: postgres-operator
-        version: 1.10.0
-        releaseName: pg
-        namespace: data
-        targetPath: manifests/production/helm
-        values:
-          replicas: 3
 ```
 
 ## Images
@@ -164,16 +155,6 @@ rollouts:
     templates: .monotool/templates             # template source directory
     targetPath: manifests/staging              # where to write rendered manifests in the repo
     pruneTargets: true                         # remove existing manifests under targetPath before writing
-    helmCharts:
-      - repository: https://charts.example.com
-        chart: myapp
-        version: 1.0.0
-        releaseName: myapp
-        namespace: default
-        targetPath: manifests/staging/helm
-        values:
-          image: "{{ .images.api }}"
-        # skipCRDs: false
 ```
 
 ### How `monotool rollout` works
@@ -186,7 +167,7 @@ monotool rollout [rollout-name] -m "rollout message"
 2. For each image: skip if the registry already has it; otherwise build (locally or pull) and push.
 3. Once all images are available in the registry, clone the rollout's GitOps repo into a temp directory.
 4. Create a fresh branch (`rollout-YYYY-MM-DD-hh-mm-ss`).
-5. Render every `.yaml`/`.yml` file under `templates` into `targetPath`, interpolating values (see below). Render every entry in `helmCharts` to a single YAML file under its own `targetPath`.
+5. Render every `.yaml`/`.yml` file under `templates` into `targetPath`, interpolating values (see below).
 6. If `pruneTargets` is true, existing top-level directories under `targetPath` are removed before rendering, so the manifests are an exact mirror of the templates.
 7. Commit, push, and open a PR with the rollout message as the body. The PR URL is printed.
 
@@ -219,14 +200,6 @@ image: registry.example.com/api:9f3a1c4b2e5d6a78
 ```
 
 The directory structure under `templates` is preserved under `targetPath`.
-
-### Helm charts
-
-Each entry in `helmCharts` is rendered locally with `helm install --dry-run --client-only` and written as a single YAML file (`<releaseName>.yaml`) under that entry's `targetPath`. This means the manifests repo contains the fully-expanded output, not a Helm release — the cluster never needs to know Helm exists.
-
-Required fields: `repository`, `chart`, `version`, `releaseName`, `namespace`, `targetPath`, and a (possibly empty) `values` map. Optional: `skipCRDs` (default `false`).
-
-Chart archives are cached under `$HELM_REPOSITORY_CACHE`, or a temp directory if that env var isn't set.
 
 ### Provider: Gitea or GitHub
 

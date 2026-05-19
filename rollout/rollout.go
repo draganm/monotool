@@ -13,25 +13,15 @@ import (
 	"github.com/draganm/manifestor/interpolate"
 	"github.com/draganm/monotool/rollout/gitea"
 	"github.com/draganm/monotool/rollout/github"
-	"github.com/draganm/monotool/rollout/helmchart"
 	"gopkg.in/yaml.v3"
 )
 
 type Rollout struct {
-	Gitea        *gitea.GiteaRollout    `yaml:"gitea"`
-	GitHub       *github.GitHubRollout  `yaml:"github"`
-	Templates    string                 `yaml:"templates"`
-	TargetPath   string                 `yaml:"targetPath"`
-	PruneTargets bool                   `yaml:"pruneTargets"`
-	HelmCharts   []*helmchart.HelmChart `yaml:"helmCharts"`
-}
-
-var helmRepositoryCache = os.Getenv("HELM_REPOSITORY_CACHE")
-
-func init() {
-	if helmRepositoryCache == "" {
-		helmRepositoryCache = filepath.Join(os.TempDir(), "monotool-helm-repository-cache")
-	}
+	Gitea        *gitea.GiteaRollout   `yaml:"gitea"`
+	GitHub       *github.GitHubRollout `yaml:"github"`
+	Templates    string                `yaml:"templates"`
+	TargetPath   string                `yaml:"targetPath"`
+	PruneTargets bool                  `yaml:"pruneTargets"`
 }
 
 func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[string]any, message string) error {
@@ -153,26 +143,6 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 			if err != nil {
 				return fmt.Errorf("could not close %s: %w", manifestPath, err)
 			}
-		}
-
-		for _, chart := range r.HelmCharts {
-
-			generated, err := chart.GenerateManifests(helmRepositoryCache)
-			if err != nil {
-				return fmt.Errorf("could not generate helm chart manifests for %s: %w", chart.ReleaseName, err)
-			}
-
-			manifestPath := filepath.Join(dir, chart.TargetPath)
-			err = os.MkdirAll(manifestPath, 0777)
-			if err != nil {
-				return fmt.Errorf("could not mkdir %s: %w", path.Dir(manifestPath), err)
-			}
-
-			err = os.WriteFile(filepath.Join(manifestPath, chart.ReleaseName+".yaml"), []byte(generated), 0777)
-			if err != nil {
-				return fmt.Errorf("could not write chart.yaml for %s: %w", chart.ReleaseName, err)
-			}
-
 		}
 
 		return nil
