@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Monotool is a Go-based CLI tool for building and deploying containerized applications in a monorepo setup. It automates Docker image building, versioning (using SHA-based tags), and deployment through Helm charts and Git operations.
+Monotool is a Go-based CLI tool for building and deploying containerized applications in a monorepo setup. It automates Docker image building, versioning (using SHA-based tags), and deployment through Git-based GitOps workflows.
 
 ## Commands
 
@@ -50,7 +50,7 @@ go build -o bin/monotool main.go
    - Default platform: `linux/amd64`
 
 3. **Rollout System** (`rollout/`)
-   - Supports multiple deployment targets (Gitea, Helm charts)
+   - Supports multiple Git providers (Gitea, GitHub) for GitOps rollouts
    - Concurrent image building with semaphore-based rate limiting
    - Progress tracking with UI progress bars
    - Template-based deployment configuration
@@ -66,7 +66,7 @@ go build -o bin/monotool main.go
 
 The `.monotool/config.yaml` file defines:
 - `images`: Map of image names to Docker/Go configurations
-- `rollouts`: Map of rollout names to deployment configurations (Gitea repos, Helm charts, etc.)
+- `rollouts`: Map of rollout names to deployment configurations (Gitea or GitHub repos)
 
 Each image configuration includes:
 - `dockerImage`: Base Docker image name (without tag)
