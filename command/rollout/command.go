@@ -28,10 +28,23 @@ func pointerOf[T any](v T) *T {
 func Command() *cli.Command {
 	return &cli.Command{
 		Name: "rollout",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "message",
+				Aliases:  []string{"m"},
+				Usage:    "describe the purpose of the rollout (included in the PR description)",
+				Required: true,
+			},
+		},
 		Action: func(c *cli.Context) error {
 			cfg, err := config.Load()
 			if err != nil {
 				return fmt.Errorf("could not load config: %w", err)
+			}
+
+			message := strings.TrimSpace(c.String("message"))
+			if message == "" {
+				return errors.New("rollout message (-m) must not be empty")
 			}
 
 			requestedRollout := c.Args().First()
@@ -173,7 +186,7 @@ func Command() *cli.Command {
 			}
 
 			fmt.Printf("rolling out to %s\n", requestedRollout)
-			err = r.RollOut(ctx, cfg.ProjectRoot, values)
+			err = r.RollOut(ctx, cfg.ProjectRoot, values, message)
 			if err != nil {
 				return fmt.Errorf("roll out failed: %w", err)
 			}

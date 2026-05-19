@@ -11,7 +11,7 @@ type GiteaRollout struct {
 	RepoURL string `yaml:"repoUrl"`
 }
 
-func (g *GiteaRollout) RollOut(ctx context.Context, generate func(dir string) error) error {
+func (g *GiteaRollout) RollOut(ctx context.Context, message string, generate func(dir string) error) error {
 	td, err := os.MkdirTemp("", "")
 	if err != nil {
 		return fmt.Errorf("could not create a temp dir: %w", err)
@@ -45,7 +45,9 @@ func (g *GiteaRollout) RollOut(ctx context.Context, generate func(dir string) er
 		return fmt.Errorf("could not add generated files: %w", err)
 	}
 
-	err = createCommit(ctx, td, fmt.Sprintf("rollout %s", commitTime))
+	commitMessage := fmt.Sprintf("rollout %s\n\n%s", commitTime, message)
+
+	err = createCommit(ctx, td, commitMessage)
 	if err != nil {
 		return fmt.Errorf("could not create commit: %w", err)
 	}
@@ -55,7 +57,7 @@ func (g *GiteaRollout) RollOut(ctx context.Context, generate func(dir string) er
 		return fmt.Errorf("could not push: %w", err)
 	}
 
-	output, err := createPR(ctx, td, fmt.Sprintf("rollout %s", commitTime), "")
+	output, err := createPR(ctx, td, fmt.Sprintf("rollout %s", commitTime), message)
 	if err != nil {
 		return fmt.Errorf("could not create PR: %w", err)
 	}

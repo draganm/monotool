@@ -32,7 +32,7 @@ func init() {
 	}
 }
 
-func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[string]any) error {
+func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[string]any, message string) error {
 	if r.Gitea == nil {
 		return errors.New("deployment has no gitea config")
 	}
@@ -172,7 +172,7 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 		return nil
 	}
 
-	err = r.Gitea.RollOut(ctx, generateManifests)
+	err = r.Gitea.RollOut(ctx, message, generateManifests)
 	if err != nil {
 		return fmt.Errorf("gitea deployment failed: %w", err)
 	}
