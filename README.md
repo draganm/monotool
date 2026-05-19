@@ -1,58 +1,41 @@
 # Monotool
 
-A CLI tool for building and deploying containerized applications in a monorepo setup. Monotool automates Docker image building, SHA-based versioning, and deployment through Helm charts and Git operations.
+A small CLI for building and shipping container images out of a monorepo via GitOps.
 
-## Getting Started
+## What it does
 
-Initialize a new monotool project:
+In a monorepo you typically have many services that share code. Monotool lets you describe each service once, gives every container image a deterministic tag derived from its source, and ships the whole set to a cluster by opening a PR against your GitOps manifests repository.
+
+Concretely, monotool takes care of three things:
+
+1. **Building images.** Go modules, Nix derivations, or arbitrary `Dockerfile`s are all first-class. Builds run concurrently.
+2. **Tagging them deterministically.** The tag for an image is a hash of its source — same source, same tag, every time. If the tag already exists in the registry, the build is skipped.
+3. **Rolling them out.** It clones a manifests repository, renders templates and Helm charts with the freshly-computed image references, opens a PR, and prints the URL.
+
+## Philosophy
+
+- **Source content is the version.** Tags come from hashes of the inputs (Go package source, Nix derivation, Dockerfile + build context). This makes rebuilds idempotent and rollouts diff-friendly — if nothing changed, the manifests are identical.
+- **Do as little work as possible.** Before building, monotool checks whether the image already exists locally or in the registry. If yes, it's reused; if no, it's built, pushed, and tagged.
+- **GitOps, not `kubectl apply`.** Rollouts produce a commit and a pull request against a manifests repository. Promotion, review, and rollback are then just git operations.
+- **One config file.** Everything lives in `.monotool/config.yaml`. The file is discovered by walking up from the current directory, so the tool works from any subdirectory of the monorepo.
+
+## Getting started
 
 ```bash
 monotool init
 ```
 
-This creates a `.monotool/config.yaml` in your current directory.
+This creates `.monotool/config.yaml` in the current directory. Edit it to describe your images and rollouts, then:
 
-## Configuration
-
-All configuration lives in `.monotool/config.yaml`. It defines **images** (how to build containers) and **rollouts** (how to deploy them).
-
-```yaml
-images:
-  myservice:
-    dockerImage: registry.example.com/myservice
-    go:
-      package: ./cmd/myservice
-  mynixservice:
-    dockerImage: registry.example.com/mynixservice
-    nix:
-      file: nix/mynixservice.nix
-  mydockerservice:
-    dockerImage: registry.example.com/mydockerservice
-    docker:
-      context: ./services/mydockerservice
-      # dockerfile: Dockerfile.prod   # optional, relative to context; defaults to "Dockerfile"
-
-rollouts:
-  production:
-    gitea:
-      repoUrl: https://gitea.example.com/org/deployments.git
-    templates: .monotool/templates
-    targetPath: manifests
-    helmCharts:
-      - repository: https://charts.example.com
-        chart: myapp
-        version: 1.0.0
-        releaseName: myservice
-        namespace: default
+```bash
+monotool images list      # show what's defined and whether each image is built
+monotool images build     # build everything that isn't already built
+monotool rollout -m "ship the new login flow"
 ```
 
-## Image Types
+## The configuration file
 
-Each image must use exactly one build method: `go`, `nix`, or `docker`.
-
-### Go Images
-
-Builds a Docker image from a Go package using `docker buildx`. The image is tagged with a deterministic SHA computed from the Go package source (via [gosha](https://github.com/draganm/gosha)).
+`.monotool/config.yaml` has two top-level keys: `images` and `rollouts`.
 
 ```yaml
 images:
@@ -60,14 +43,62 @@ images:
     dockerImage: registry.example.com/api
     go:
       package: ./cmd/api
-    platform: linux/amd64  # optional, defaults to linux/amd64
+
+  worker:
+    dockerImage: registry.example.com/worker
+    nix:
+      file: nix/worker.nix
+
+  web:
+    dockerImage: registry.example.com/web
+    docker:
+      context: ./services/web
+
+rollouts:
+  production:
+    gitea:
+      repoUrl: https://gitea.example.com/org/deployments.git
+    templates: .monotool/templates
+    targetPath: manifests/production
+    pruneTargets: true
+    helmCharts:
+      - repository: https://charts.example.com
+        chart: postgres-operator
+        version: 1.10.0
+        releaseName: pg
+        namespace: data
+        targetPath: manifests/production/helm
+        values:
+          replicas: 3
 ```
 
-The Go build uses a multi-stage Dockerfile: it compiles the Go binary with static linking, then copies it into an Alpine-based image.
+## Images
 
-### Nix Images
+Every image entry has a `dockerImage` (the registry path **without** a tag) and exactly one of `go`, `nix`, or `docker`. The tag is computed automatically.
 
-Builds a Docker image using a Nix expression (e.g., `pkgs.dockerTools.buildLayeredImage`). The image is tagged with a hash derived from the Nix derivation, evaluated before building. The resulting tarball is loaded into Docker via `docker load`.
+```yaml
+images:
+  myservice:
+    dockerImage: registry.example.com/myservice
+    platform: linux/amd64        # optional, defaults to linux/amd64
+    go: { package: ./cmd/myservice }
+```
+
+### Go images
+
+Compiles a Go binary and packages it in a minimal Alpine image. The tag is the first 8 bytes of [gosha](https://github.com/draganm/gosha)'s content hash over the Go package and its imports.
+
+```yaml
+images:
+  api:
+    dockerImage: registry.example.com/api
+    go:
+      package: ./cmd/api
+```
+
+### Nix images
+
+Builds a Docker image from a Nix expression that evaluates to a tarball (the output of `pkgs.dockerTools.buildLayeredImage` or `buildImage`). The tag is derived from the `.drv` path of the instantiated derivation, so anything that would change the build changes the tag.
 
 ```yaml
 images:
@@ -77,11 +108,7 @@ images:
       file: nix/worker.nix
 ```
 
-The `file` path is relative to the project root.
-
-#### Example Nix Expression
-
-Here is an example `nix/worker.nix` that builds a Docker image containing a simple Go binary:
+Example `nix/worker.nix`:
 
 ```nix
 { pkgs ? import <nixpkgs> {} }:
@@ -91,7 +118,7 @@ let
     pname = "worker";
     version = "0.1.0";
     src = ../.;
-    vendorHash = null; # or the appropriate hash
+    vendorHash = null;
     subPackages = [ "cmd/worker" ];
   };
 in
@@ -99,17 +126,17 @@ pkgs.dockerTools.buildLayeredImage {
   name = "worker";
   tag = "latest";
   contents = [ app pkgs.cacert ];
-  config = {
-    Entrypoint = [ "${app}/bin/worker" ];
-  };
+  config.Entrypoint = [ "${app}/bin/worker" ];
 }
 ```
 
-The Nix expression must evaluate to a Docker image tarball (the output of `dockerTools.buildLayeredImage` or `dockerTools.buildImage`).
+On macOS, cross-compiling for Linux requires no manual setup: monotool transparently provisions a [Lima](https://lima-vm.io/) VM named `nix`, installs Nix into it, and runs `nix-build` there. The resulting tarball is then loaded into the host Docker daemon.
 
-### Docker Images
+Supported platforms: `linux/amd64`, `linux/arm64`, `linux/arm/v7`, `linux/386`.
 
-Builds a Docker image from an arbitrary `Dockerfile` + context directory using `docker buildx`. Use this when your image doesn't fit the Go template or a Nix derivation — e.g., multi-language projects, images based on existing Dockerfiles, or anything with custom build steps.
+### Docker images
+
+Builds an arbitrary `Dockerfile` against a build context using `docker buildx`. Use this when neither the Go template nor a Nix derivation fits — multi-language services, legacy projects, anything with custom build steps.
 
 ```yaml
 images:
@@ -117,38 +144,117 @@ images:
     dockerImage: registry.example.com/web
     docker:
       context: ./services/web
-      # dockerfile: Dockerfile.prod   # optional, relative to the context directory
-    platform: linux/amd64             # optional, defaults to linux/amd64
+      # dockerfile: Dockerfile.prod   # optional, relative to context; default "Dockerfile"
+    platform: linux/amd64
 ```
 
-- `context` is resolved **relative to the project root** (matching `go.package` and `nix.file`).
-- `dockerfile` is resolved **relative to the context directory**, matching Docker's own `docker build -f` convention. If omitted, `Dockerfile` inside the context is used.
+- `context` is resolved **relative to the project root** (the directory that contains `.monotool/`).
+- `dockerfile` is resolved **relative to the context directory**, mirroring `docker build -f`. Defaults to `Dockerfile`.
 
-The image is tagged with a deterministic hash computed from the Dockerfile contents plus a sorted manifest of the context directory. `.dockerignore` is honored using the same matcher Docker/BuildKit itself uses, so the tag only changes when files Docker would actually send to the daemon change. Negation patterns (`!keep.txt`) work as expected.
+The tag is a hash of the Dockerfile contents plus a sorted manifest of the context. `.dockerignore` is honored using the same matcher BuildKit uses, including negation patterns (`!keep.txt`). The tag only changes when files Docker would actually ship to the daemon change.
+
+## Rollouts
+
+A rollout is a named recipe for building all configured images and producing a PR against a manifests repository. Each rollout points at one GitOps repository hosted on **either Gitea or GitHub** (exactly one is required) and a directory of templates.
+
+```yaml
+rollouts:
+  staging:
+    github:                                    # OR `gitea:`
+      repoUrl: https://github.com/org/deployments.git
+      # base: main                             # optional target branch for the PR
+    templates: .monotool/templates             # template source directory
+    targetPath: manifests/staging              # where to write rendered manifests in the repo
+    pruneTargets: true                         # remove existing manifests under targetPath before writing
+    helmCharts:
+      - repository: https://charts.example.com
+        chart: myapp
+        version: 1.0.0
+        releaseName: myapp
+        namespace: default
+        targetPath: manifests/staging/helm
+        values:
+          image: "{{ .images.api }}"
+        # skipCRDs: false
+```
+
+### How `monotool rollout` works
+
+```bash
+monotool rollout [rollout-name] -m "rollout message"
+```
+
+1. Compute the deterministic tag for every image listed in `images`.
+2. For each image: skip if the registry already has it; otherwise build (locally or pull) and push.
+3. Once all images are available in the registry, clone the rollout's GitOps repo into a temp directory.
+4. Create a fresh branch (`rollout-YYYY-MM-DD-hh-mm-ss`).
+5. Render every `.yaml`/`.yml` file under `templates` into `targetPath`, interpolating values (see below). Render every entry in `helmCharts` to a single YAML file under its own `targetPath`.
+6. If `pruneTargets` is true, existing top-level directories under `targetPath` are removed before rendering, so the manifests are an exact mirror of the templates.
+7. Commit, push, and open a PR with the rollout message as the body. The PR URL is printed.
+
+The `-m` / `--message` flag is required and ends up in both the commit message and the PR description.
+
+If only one rollout is configured the name argument can be omitted.
+
+### Templates and interpolation
+
+Templates are plain YAML files under the `templates` directory. They are rendered with [manifestor/interpolate](https://github.com/draganm/manifestor), which performs `{{ ... }}` substitution against a values map. Monotool passes one value: `images`, a map from image name to fully-tagged image reference.
+
+```yaml
+# .monotool/templates/api/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          image: "{{ .images.api }}"
+```
+
+After a rollout, this becomes:
+
+```yaml
+image: registry.example.com/api:9f3a1c4b2e5d6a78
+```
+
+The directory structure under `templates` is preserved under `targetPath`.
+
+### Helm charts
+
+Each entry in `helmCharts` is rendered locally with `helm install --dry-run --client-only` and written as a single YAML file (`<releaseName>.yaml`) under that entry's `targetPath`. This means the manifests repo contains the fully-expanded output, not a Helm release — the cluster never needs to know Helm exists.
+
+Required fields: `repository`, `chart`, `version`, `releaseName`, `namespace`, `targetPath`, and a (possibly empty) `values` map. Optional: `skipCRDs` (default `false`).
+
+Chart archives are cached under `$HELM_REPOSITORY_CACHE`, or a temp directory if that env var isn't set.
+
+### Provider: Gitea or GitHub
+
+The two providers do the same thing — clone, branch, commit, push, open a PR — and differ only in which CLI they shell out to for the PR step:
+
+| Provider | Block in config | PR creation |
+|----------|-----------------|-------------|
+| Gitea    | `gitea:`        | `tea pr create` |
+| GitHub   | `github:`       | `gh pr create` |
+
+Both expect `repoUrl` to be a URL you have credentials for (SSH or HTTPS). The GitHub block also accepts an optional `base` field to target a non-default branch.
+
+A rollout must configure exactly one of the two — having both, or neither, is an error.
 
 ## Commands
 
 ```bash
-# Initialize a new monotool project
-monotool init
-
-# List all configured images and their build status
-monotool images list
-
-# Build all images that aren't already built
-monotool images build
-
-# Deploy images using a rollout configuration
-monotool rollout [rollout-name]
+monotool init                       # write .monotool/config.yaml in the current directory
+monotool images list                # for each image: show the computed tag and whether it's already pushed
+monotool images build               # build every image whose tag isn't already available locally or in the registry
+monotool rollout [name] -m "..."    # build, push, and open a PR for the named rollout (name optional if only one exists)
 ```
-
-### Rollout
-
-The `rollout` command builds all images concurrently, pushes them to the registry, then deploys using the configured method (Gitea PR, Helm charts, or both). Image references are passed to rollout templates as `{{ .images.imageName }}`.
 
 ## Requirements
 
-- **Go images:** Docker daemon running, `docker` CLI available
-- **Nix images:** `nix-build` and `nix-instantiate` available, Docker daemon running
-- **Docker images:** Docker daemon running, `docker buildx` available
-- **Rollouts:** `git` in PATH; `tea` CLI for Gitea PR creation
+- **Go images:** Docker daemon running, `docker` CLI with `buildx` available.
+- **Nix images:** `nix-build` and `nix-instantiate` available. On macOS, `limactl` is required and a `nix` Lima instance is created on first use.
+- **Docker images:** Docker daemon running, `docker buildx` available.
+- **Rollouts:** `git` in `PATH`. `tea` for Gitea PRs, `gh` for GitHub PRs — only the one matching your configured provider.

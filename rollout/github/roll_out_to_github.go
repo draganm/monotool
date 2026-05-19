@@ -1,4 +1,4 @@
-package gitea
+package github
 
 import (
 	"bytes"
@@ -11,11 +11,12 @@ import (
 	"github.com/draganm/monotool/rollout/gitops"
 )
 
-type GiteaRollout struct {
+type GitHubRollout struct {
 	RepoURL string `yaml:"repoUrl"`
+	Base    string `yaml:"base"`
 }
 
-func (g *GiteaRollout) RollOut(ctx context.Context, message string, generate func(dir string) error) error {
+func (g *GitHubRollout) RollOut(ctx context.Context, message string, generate func(dir string) error) error {
 	td, err := os.MkdirTemp("", "")
 	if err != nil {
 		return fmt.Errorf("could not create a temp dir: %w", err)
@@ -61,7 +62,7 @@ func (g *GiteaRollout) RollOut(ctx context.Context, message string, generate fun
 		return fmt.Errorf("could not push: %w", err)
 	}
 
-	output, err := createPR(ctx, td, fmt.Sprintf("rollout %s", commitTime), message)
+	output, err := createPR(ctx, td, fmt.Sprintf("rollout %s", commitTime), message, g.Base)
 	if err != nil {
 		return fmt.Errorf("could not create PR: %w", err)
 	}
@@ -71,8 +72,13 @@ func (g *GiteaRollout) RollOut(ctx context.Context, message string, generate fun
 	return nil
 }
 
-func createPR(ctx context.Context, dir string, title, description string) (string, error) {
-	cmd := exec.CommandContext(ctx, "tea", "pr", "create", "--title", title, "--description", description)
+func createPR(ctx context.Context, dir string, title, body, base string) (string, error) {
+	args := []string{"pr", "create", "--title", title, "--body", body}
+	if base != "" {
+		args = append(args, "--base", base)
+	}
+
+	cmd := exec.CommandContext(ctx, "gh", args...)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
 	cmd.Stderr = out
@@ -80,7 +86,7 @@ func createPR(ctx context.Context, dir string, title, description string) (strin
 
 	err := cmd.Run()
 	if err != nil {
-		return "", fmt.Errorf("tea pr create failed: %w\n%s", err, out.String())
+		return "", fmt.Errorf("gh pr create failed: %w\n%s", err, out.String())
 	}
 
 	return out.String(), nil

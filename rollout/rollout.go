@@ -12,12 +12,14 @@ import (
 
 	"github.com/draganm/manifestor/interpolate"
 	"github.com/draganm/monotool/rollout/gitea"
+	"github.com/draganm/monotool/rollout/github"
 	"github.com/draganm/monotool/rollout/helmchart"
 	"gopkg.in/yaml.v3"
 )
 
 type Rollout struct {
 	Gitea        *gitea.GiteaRollout    `yaml:"gitea"`
+	GitHub       *github.GitHubRollout  `yaml:"github"`
 	Templates    string                 `yaml:"templates"`
 	TargetPath   string                 `yaml:"targetPath"`
 	PruneTargets bool                   `yaml:"pruneTargets"`
@@ -33,8 +35,12 @@ func init() {
 }
 
 func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[string]any, message string) error {
-	if r.Gitea == nil {
-		return errors.New("deployment has no gitea config")
+	if r.Gitea == nil && r.GitHub == nil {
+		return errors.New("rollout must have either a gitea or github config")
+	}
+
+	if r.Gitea != nil && r.GitHub != nil {
+		return errors.New("rollout cannot have both gitea and github configs")
 	}
 
 	templatesPath, err := filepath.Abs(filepath.Join(projectRoot, r.Templates))
@@ -172,9 +178,17 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 		return nil
 	}
 
-	err = r.Gitea.RollOut(ctx, message, generateManifests)
-	if err != nil {
-		return fmt.Errorf("gitea deployment failed: %w", err)
+	switch {
+	case r.Gitea != nil:
+		err = r.Gitea.RollOut(ctx, message, generateManifests)
+		if err != nil {
+			return fmt.Errorf("gitea deployment failed: %w", err)
+		}
+	case r.GitHub != nil:
+		err = r.GitHub.RollOut(ctx, message, generateManifests)
+		if err != nil {
+			return fmt.Errorf("github deployment failed: %w", err)
+		}
 	}
 
 	return nil

@@ -1,4 +1,4 @@
-package gitea
+package gitops
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"os/exec"
 )
 
-func cloneRepo(ctx context.Context, url string, dir string) error {
+func CloneRepo(ctx context.Context, url string, dir string) error {
 	cmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", "--quiet", url, dir)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
@@ -21,7 +21,7 @@ func cloneRepo(ctx context.Context, url string, dir string) error {
 	return nil
 }
 
-func createBranch(ctx context.Context, dir string, branchName string) error {
+func CreateBranch(ctx context.Context, dir string, branchName string) error {
 	cmd := exec.CommandContext(ctx, "git", "checkout", "-q", "-b", branchName)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
@@ -36,7 +36,7 @@ func createBranch(ctx context.Context, dir string, branchName string) error {
 	return nil
 }
 
-func addFilesToGit(ctx context.Context, dir string) error {
+func AddFiles(ctx context.Context, dir string) error {
 	cmd := exec.CommandContext(ctx, "git", "add", ".")
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
@@ -51,7 +51,7 @@ func addFilesToGit(ctx context.Context, dir string) error {
 	return nil
 }
 
-func createCommit(ctx context.Context, dir string, message string) error {
+func CreateCommit(ctx context.Context, dir string, message string) error {
 	cmd := exec.CommandContext(ctx, "git", "commit", "-m", message)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
@@ -66,7 +66,7 @@ func createCommit(ctx context.Context, dir string, message string) error {
 	return nil
 }
 
-func pushToOrigin(ctx context.Context, dir string, branchName string) error {
+func PushToOrigin(ctx context.Context, dir string, branchName string) error {
 	cmd := exec.CommandContext(ctx, "git", "push", "origin", branchName)
 	out := new(bytes.Buffer)
 	cmd.Stdout = out
@@ -79,19 +79,4 @@ func pushToOrigin(ctx context.Context, dir string, branchName string) error {
 	}
 
 	return nil
-}
-
-func createPR(ctx context.Context, dir string, title, description string) (string, error) {
-	cmd := exec.CommandContext(ctx, "tea", "pr", "create", "--title", title, "--description", description)
-	out := new(bytes.Buffer)
-	cmd.Stdout = out
-	cmd.Stderr = out
-	cmd.Dir = dir
-
-	err := cmd.Run()
-	if err != nil {
-		return "", fmt.Errorf("tea pr create failed: %w\n%s", err, out.String())
-	}
-
-	return out.String(), nil
 }
