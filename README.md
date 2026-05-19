@@ -44,7 +44,15 @@ rollouts:
         version: 1.0.0
         releaseName: myservice
         namespace: default
+  staging:
+    github:
+      repoUrl: https://github.com/org/deployments.git
+      # base: main   # optional, target branch for the PR
+    templates: .monotool/templates
+    targetPath: manifests
 ```
+
+Each rollout must configure exactly one of `gitea` or `github`.
 
 ## Image Types
 
@@ -144,11 +152,11 @@ monotool rollout [rollout-name]
 
 ### Rollout
 
-The `rollout` command builds all images concurrently, pushes them to the registry, then deploys using the configured method (Gitea PR, Helm charts, or both). Image references are passed to rollout templates as `{{ .images.imageName }}`.
+The `rollout` command builds all images concurrently, pushes them to the registry, then deploys by opening a PR against a GitOps repository hosted on either Gitea or GitHub (Helm charts can be rendered into the same PR). Image references are passed to rollout templates as `{{ .images.imageName }}`.
 
 ## Requirements
 
 - **Go images:** Docker daemon running, `docker` CLI available
 - **Nix images:** `nix-build` and `nix-instantiate` available, Docker daemon running
 - **Docker images:** Docker daemon running, `docker buildx` available
-- **Rollouts:** `git` in PATH; `tea` CLI for Gitea PR creation
+- **Rollouts:** `git` in PATH; `tea` CLI for Gitea PR creation, `gh` CLI for GitHub PR creation
