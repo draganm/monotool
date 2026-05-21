@@ -62,7 +62,7 @@ func (g *GitHubRollout) RollOut(ctx context.Context, message string, generate fu
 		return fmt.Errorf("could not push: %w", err)
 	}
 
-	output, err := createPR(ctx, td, fmt.Sprintf("rollout %s", commitTime), message, g.Base)
+	output, err := createPR(ctx, td, fmt.Sprintf("rollout %s", commitTime), message, g.Base, branchName)
 	if err != nil {
 		return fmt.Errorf("could not create PR: %w", err)
 	}
@@ -72,8 +72,8 @@ func (g *GitHubRollout) RollOut(ctx context.Context, message string, generate fu
 	return nil
 }
 
-func createPR(ctx context.Context, dir string, title, body, base string) (string, error) {
-	args := []string{"pr", "create", "--title", title, "--body", body}
+func createPR(ctx context.Context, dir string, title, body, base, head string) (string, error) {
+	args := []string{"pr", "create", "--title", title, "--body", body, "--head", head}
 	if base != "" {
 		args = append(args, "--base", base)
 	}
