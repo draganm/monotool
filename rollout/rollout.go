@@ -63,7 +63,7 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 		}
 
 		ext := filepath.Ext(path)
-		if !(ext == ".yaml" || ext == ".yml") {
+		if !(ext == ".yaml" || ext == ".yml" || ext == ".json") {
 			return nil
 		}
 
@@ -132,11 +132,19 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 				return fmt.Errorf("could not open manifest output file %s: %w", manifestPath, err)
 			}
 
-			enc := yaml.NewEncoder(f)
-			err = interpolate.Interpolate(string(d), "", values, enc)
-			if err != nil {
-				f.Close()
-				return fmt.Errorf("could not interpolate %s: %w", manifestPath, err)
+			if filepath.Ext(manifestPath) == ".json" {
+				_, err = f.Write(d)
+				if err != nil {
+					f.Close()
+					return fmt.Errorf("could not write %s: %w", manifestPath, err)
+				}
+			} else {
+				enc := yaml.NewEncoder(f)
+				err = interpolate.Interpolate(string(d), "", values, enc)
+				if err != nil {
+					f.Close()
+					return fmt.Errorf("could not interpolate %s: %w", manifestPath, err)
+				}
 			}
 
 			err = f.Close()
