@@ -35,6 +35,10 @@ func Command() *cli.Command {
 				Usage:    "describe the purpose of the rollout (included in the PR description)",
 				Required: true,
 			},
+			&cli.BoolFlag{
+				Name:  "force",
+				Usage: "overwrite files in the gitops repo that aren't owned by monotool or have been edited since the last rollout",
+			},
 		},
 		Action: func(c *cli.Context) error {
 			cfg, err := config.Load()
@@ -186,7 +190,7 @@ func Command() *cli.Command {
 			}
 
 			fmt.Printf("rolling out to %s\n", requestedRollout)
-			err = r.RollOut(ctx, cfg.ProjectRoot, values, message, false)
+			err = r.RollOut(ctx, cfg.ProjectRoot, values, message, c.Bool("force"))
 			if err != nil {
 				return fmt.Errorf("roll out failed: %w", err)
 			}
