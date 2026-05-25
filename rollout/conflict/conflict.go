@@ -71,17 +71,26 @@ func (s *Set) Items() []Conflict {
 	return out
 }
 
-// Report writes a human-readable conflict report to w, grouped by reason with
-// paths sorted within each group. Reasons appear in fixed order: unmarked,
-// then hash-mismatch.
+// Report writes the abort-mode conflict report to w. Use when conflicts will
+// cause the rollout to fail.
 func (s *Set) Report(w io.Writer) {
+	fmt.Fprintf(w, "rollout aborted: %d conflict(s) detected\n\n", len(s.items))
+	s.writeGroups(w)
+	fmt.Fprintln(w, "re-run with --force to overwrite, or resolve manually and commit before retrying.")
+}
+
+// Warn writes the force-mode conflict report to w. Use when --force is in
+// effect and the rollout is proceeding despite the conflicts.
+func (s *Set) Warn(w io.Writer) {
+	fmt.Fprintf(w, "warning: %d conflict(s) detected, --force overwriting\n\n", len(s.items))
+	s.writeGroups(w)
+}
+
+func (s *Set) writeGroups(w io.Writer) {
 	byReason := map[Reason][]string{}
 	for _, c := range s.items {
 		byReason[c.Reason] = append(byReason[c.Reason], c.Path)
 	}
-
-	fmt.Fprintf(w, "rollout aborted: %d conflict(s) detected\n\n", len(s.items))
-
 	for _, r := range []Reason{ReasonUnmarked, ReasonHashMismatch} {
 		paths := byReason[r]
 		if len(paths) == 0 {
@@ -99,6 +108,4 @@ func (s *Set) Report(w io.Writer) {
 		}
 		fmt.Fprintln(w)
 	}
-
-	fmt.Fprintln(w, "re-run with --force to overwrite, or resolve manually and commit before retrying.")
 }

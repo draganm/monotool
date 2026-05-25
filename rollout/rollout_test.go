@@ -88,6 +88,35 @@ func TestGenerateManifestsRefusesUnmarked(t *testing.T) {
 	}
 }
 
+func TestGenerateManifestsDetectsHashMismatch(t *testing.T) {
+	templatesDir := setupTemplates(t, map[string]string{
+		"deploy.yaml": "kind: Deployment\n",
+	})
+	workDir := t.TempDir()
+	target := filepath.Join(workDir, "apps/staging/deploy.yaml")
+	mustWriteMarked(t, target, "kind: Deployment\n")
+
+	// Tamper with the body, keep the marker line intact.
+	cur, _ := os.ReadFile(target)
+	if err := os.WriteFile(target, append(cur, []byte("extra: true\n")...), 0o666); err != nil {
+		t.Fatal(err)
+	}
+
+	_, conflicts, err := GenerateManifests(context.Background(), GenerateOpts{
+		TemplatesPath: templatesDir,
+		WorkDir:       workDir,
+		TargetPath:    "apps/staging",
+		Values:        map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("GenerateManifests: %v", err)
+	}
+	got := conflicts.Items()
+	if len(got) != 1 || got[0].Reason != conflict.ReasonHashMismatch {
+		t.Fatalf("expected one hash-mismatch conflict, got %+v", got)
+	}
+}
+
 func TestGenerateManifestsForceOverwritesUnmarked(t *testing.T) {
 	templatesDir := setupTemplates(t, map[string]string{
 		"deploy.yaml": "kind: Deployment\n",

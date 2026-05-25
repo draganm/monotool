@@ -65,3 +65,28 @@ func TestReportPathsSortedWithinReason(t *testing.T) {
 		t.Fatalf("expected a.yaml before z.yaml in report; got:\n%s", out)
 	}
 }
+
+func TestWarnOmitsAbortFraming(t *testing.T) {
+	s := New()
+	s.Add("apps/foo/a.yaml", ReasonUnmarked)
+	s.Add("apps/foo/b.yaml", ReasonHashMismatch)
+
+	buf := new(bytes.Buffer)
+	s.Warn(buf)
+	out := buf.String()
+
+	if strings.Contains(out, "rollout aborted") {
+		t.Errorf("warn should not mention 'rollout aborted'; got:\n%s", out)
+	}
+	if strings.Contains(out, "re-run with --force") {
+		t.Errorf("warn should not suggest --force; got:\n%s", out)
+	}
+	if !strings.Contains(out, "warning:") {
+		t.Errorf("warn should start with 'warning:'; got:\n%s", out)
+	}
+	for _, p := range []string{"a.yaml", "b.yaml"} {
+		if !strings.Contains(out, p) {
+			t.Errorf("want %q in warning, got: %s", p, out)
+		}
+	}
+}

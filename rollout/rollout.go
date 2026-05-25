@@ -190,8 +190,10 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 
 		all := mergeConflicts(writeConflicts, pruneConflicts)
 		if !all.Empty() {
-			all.Report(os.Stderr)
-			if !force {
+			if force {
+				all.Warn(os.Stderr)
+			} else {
+				all.Report(os.Stderr)
 				return nil, nil, all.Err()
 			}
 		}
