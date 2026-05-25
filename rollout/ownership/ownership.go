@@ -172,3 +172,17 @@ func isHex64(s string) bool {
 	}
 	return true
 }
+
+// Remove deletes the file at path and, for JSON files, its sidecar. Missing
+// files are not an error.
+func Remove(path string) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove %s: %w", path, err)
+	}
+	if isJSON(path) {
+		if err := os.Remove(path + SidecarExt); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove sidecar %s: %w", path+SidecarExt, err)
+		}
+	}
+	return nil
+}

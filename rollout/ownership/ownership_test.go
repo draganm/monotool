@@ -244,3 +244,41 @@ func TestStatusMissingFile(t *testing.T) {
 		t.Fatal("expected Exists=false")
 	}
 }
+
+func TestRemoveYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "x.yaml")
+	if err := WriteMarked(path, []byte("a: 1\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Remove(path); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("expected file removed")
+	}
+}
+
+func TestRemoveJSONIncludesSidecar(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "x.json")
+	if err := WriteMarked(path, []byte(`{"a":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := Remove(path); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("expected JSON removed")
+	}
+	if _, err := os.Stat(path + SidecarExt); !os.IsNotExist(err) {
+		t.Fatal("expected sidecar removed")
+	}
+}
+
+func TestRemoveMissingIsNoError(t *testing.T) {
+	dir := t.TempDir()
+	if err := Remove(filepath.Join(dir, "gone.yaml")); err != nil {
+		t.Fatalf("Remove missing: %v", err)
+	}
+}
