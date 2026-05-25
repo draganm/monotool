@@ -116,3 +116,131 @@ func TestWriteMarkedCreatesDirs(t *testing.T) {
 		t.Fatalf("Stat: %v", err)
 	}
 }
+
+func TestStatusOwnedAndUnmodified(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ok.yaml")
+	body := []byte("kind: X\n")
+	if err := WriteMarked(path, body); err != nil {
+		t.Fatal(err)
+	}
+	st, err := Status(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Owned {
+		t.Fatal("expected Owned=true")
+	}
+	if !st.Matches {
+		t.Fatal("expected Matches=true")
+	}
+}
+
+func TestStatusUnmarkedYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "x.yaml")
+	if err := os.WriteFile(path, []byte("kind: X\n"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	st, err := Status(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Owned {
+		t.Fatal("expected Owned=false")
+	}
+}
+
+func TestStatusHashMismatchYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "x.yaml")
+	if err := WriteMarked(path, []byte("a: 1\n")); err != nil {
+		t.Fatal(err)
+	}
+	// Tamper with the body while leaving the marker line intact.
+	cur, _ := os.ReadFile(path)
+	tampered := append([]byte{}, cur...)
+	tampered = append(tampered, []byte("extra: true\n")...)
+	if err := os.WriteFile(path, tampered, 0o666); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := Status(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Owned {
+		t.Fatal("expected Owned=true (marker still present)")
+	}
+	if st.Matches {
+		t.Fatal("expected Matches=false (body tampered)")
+	}
+}
+
+func TestStatusUnmarkedJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "x.json")
+	if err := os.WriteFile(path, []byte(`{"a":1}`), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	st, err := Status(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Owned {
+		t.Fatal("expected Owned=false (no sidecar)")
+	}
+}
+
+func TestStatusHashMismatchJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "x.json")
+	if err := WriteMarked(path, []byte(`{"a":1}`+"\n")); err != nil {
+		t.Fatal(err)
+	}
+	// Tamper with the JSON, leave sidecar alone.
+	if err := os.WriteFile(path, []byte(`{"a":2}`+"\n"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	st, err := Status(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Owned {
+		t.Fatal("expected Owned=true (sidecar present)")
+	}
+	if st.Matches {
+		t.Fatal("expected Matches=false (body tampered)")
+	}
+}
+
+func TestStatusMalformedMarker(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "x.yaml")
+	// Marker prefix is present but the hash is not valid hex.
+	body := []byte(MarkerPrefix + "not-a-real-hash-value\nkind: X\n")
+	if err := os.WriteFile(path, body, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	st, err := Status(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Owned {
+		t.Fatal("expected Owned=true (marker prefix present)")
+	}
+	if st.Matches {
+		t.Fatal("expected Matches=false (malformed marker counts as mismatch)")
+	}
+}
+
+func TestStatusMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Status(filepath.Join(dir, "gone.yaml"))
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if st.Exists {
+		t.Fatal("expected Exists=false")
+	}
+}

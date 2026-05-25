@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -87,4 +88,87 @@ func WriteMarked(path string, body []byte) error {
 		return fmt.Errorf("WriteMarked: unsupported extension for %s", path)
 	}
 	return nil
+}
+
+// FileStatus describes a target path's ownership state.
+type FileStatus struct {
+	// Exists reports whether the file is present on disk.
+	Exists bool
+	// Owned reports whether a monotool marker is present (YAML header or JSON
+	// sidecar). False when Exists is false.
+	Owned bool
+	// Matches reports whether the recorded marker hash equals the current
+	// body's hash. False when Owned is false or when the marker is malformed.
+	Matches bool
+}
+
+// Status inspects path and returns its ownership status. A missing file
+// produces FileStatus{} (all false) with a nil error. I/O errors other than
+// "not exist" are returned.
+func Status(path string) (FileStatus, error) {
+	body, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return FileStatus{}, nil
+	}
+	if err != nil {
+		return FileStatus{}, fmt.Errorf("read %s: %w", path, err)
+	}
+
+	st := FileStatus{Exists: true}
+
+	markerHash, owned, err := readMarker(path, body)
+	if err != nil {
+		return FileStatus{}, err
+	}
+	st.Owned = owned
+	if !owned {
+		return st, nil
+	}
+
+	if !isHex64(markerHash) {
+		return st, nil // owned but malformed → Matches stays false
+	}
+
+	st.Matches = ComputeBodyHash(path, body) == markerHash
+	return st, nil
+}
+
+// readMarker returns the recorded hash and whether a marker was found.
+// For YAML, the marker is the first-line comment. For JSON, the marker is the
+// sidecar file. body is the file body for YAML; for JSON it is unused.
+func readMarker(path string, body []byte) (hash string, owned bool, err error) {
+	switch {
+	case isYAML(path):
+		if !hasMarkerLine(body) {
+			return "", false, nil
+		}
+		nl := bytes.IndexByte(body, '\n')
+		if nl < 0 {
+			return "", true, nil
+		}
+		line := string(body[:nl])
+		return strings.TrimSpace(strings.TrimPrefix(line, MarkerPrefix)), true, nil
+	case isJSON(path):
+		side, err := os.ReadFile(path + SidecarExt)
+		if errors.Is(err, os.ErrNotExist) {
+			return "", false, nil
+		}
+		if err != nil {
+			return "", false, fmt.Errorf("read sidecar %s: %w", path+SidecarExt, err)
+		}
+		return strings.TrimSpace(string(side)), true, nil
+	default:
+		return "", false, nil
+	}
+}
+
+// isHex64 reports whether s is exactly 64 lowercase hex characters.
+func isHex64(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	if _, err := hex.DecodeString(s); err != nil {
+		return false
+	}
+	return true
 }
