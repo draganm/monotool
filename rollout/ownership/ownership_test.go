@@ -3,6 +3,8 @@ package ownership
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -50,5 +52,67 @@ func TestComputeBodyHash(t *testing.T) {
 	gotJSON := ComputeBodyHash("x.json", body)
 	if gotJSON != want {
 		t.Fatalf("JSON hash = %s, want %s", gotJSON, want)
+	}
+}
+
+func TestWriteMarkedYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "deploy.yaml")
+	body := []byte("apiVersion: apps/v1\nkind: Deployment\n")
+
+	if err := WriteMarked(path, body); err != nil {
+		t.Fatalf("WriteMarked: %v", err)
+	}
+
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	wantHash := ComputeBodyHash(path, body)
+	wantHead := MarkerPrefix + wantHash + "\n"
+	if string(written[:len(wantHead)]) != wantHead {
+		t.Fatalf("file head = %q, want %q", written[:len(wantHead)], wantHead)
+	}
+	if string(written[len(wantHead):]) != string(body) {
+		t.Fatalf("file body after marker = %q, want %q", written[len(wantHead):], body)
+	}
+}
+
+func TestWriteMarkedJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	body := []byte(`{"a":1}` + "\n")
+
+	if err := WriteMarked(path, body); err != nil {
+		t.Fatalf("WriteMarked: %v", err)
+	}
+
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile json: %v", err)
+	}
+	if string(written) != string(body) {
+		t.Fatalf("JSON body modified: got %q, want %q", written, body)
+	}
+
+	sidecar, err := os.ReadFile(path + SidecarExt)
+	if err != nil {
+		t.Fatalf("ReadFile sidecar: %v", err)
+	}
+	wantHash := ComputeBodyHash(path, body)
+	if string(sidecar) != wantHash+"\n" {
+		t.Fatalf("sidecar = %q, want %q", sidecar, wantHash+"\n")
+	}
+}
+
+func TestWriteMarkedCreatesDirs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nested/dir/x.yaml")
+	if err := WriteMarked(path, []byte("a: b\n")); err != nil {
+		t.Fatalf("WriteMarked nested: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("Stat: %v", err)
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -51,4 +53,38 @@ func ComputeBodyHash(path string, body []byte) string {
 	stripped := StripMarker(path, body)
 	sum := sha256.Sum256(stripped)
 	return hex.EncodeToString(sum[:])
+}
+
+// WriteMarked writes body to path and records monotool's ownership marker.
+// For YAML files, the marker is prepended as a comment line. For JSON files,
+// the marker is stored in a sidecar file named <path>+SidecarExt. Parent
+// directories are created as needed.
+func WriteMarked(path string, body []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o777); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
+	}
+
+	hash := ComputeBodyHash(path, body)
+
+	switch {
+	case isYAML(path):
+		out := make([]byte, 0, len(MarkerPrefix)+len(hash)+1+len(body))
+		out = append(out, MarkerPrefix...)
+		out = append(out, hash...)
+		out = append(out, '\n')
+		out = append(out, body...)
+		if err := os.WriteFile(path, out, 0o666); err != nil {
+			return fmt.Errorf("write yaml %s: %w", path, err)
+		}
+	case isJSON(path):
+		if err := os.WriteFile(path, body, 0o666); err != nil {
+			return fmt.Errorf("write json %s: %w", path, err)
+		}
+		if err := os.WriteFile(path+SidecarExt, []byte(hash+"\n"), 0o666); err != nil {
+			return fmt.Errorf("write sidecar %s: %w", path+SidecarExt, err)
+		}
+	default:
+		return fmt.Errorf("WriteMarked: unsupported extension for %s", path)
+	}
+	return nil
 }
