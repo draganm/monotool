@@ -239,6 +239,7 @@ func Prune(_ context.Context, opts PruneOpts) (removed []string, conflicts *conf
 	type ownedFile struct {
 		path string
 		rel  string
+		st   ownership.FileStatus
 	}
 	var ownedFiles []ownedFile
 	var orphanSidecars []string
@@ -274,7 +275,7 @@ func Prune(_ context.Context, opts PruneOpts) (removed []string, conflicts *conf
 		if err != nil {
 			return err
 		}
-		ownedFiles = append(ownedFiles, ownedFile{path: p, rel: rel})
+		ownedFiles = append(ownedFiles, ownedFile{path: p, rel: rel, st: st})
 		return nil
 	})
 	if err != nil {
@@ -286,11 +287,7 @@ func Prune(_ context.Context, opts PruneOpts) (removed []string, conflicts *conf
 			continue
 		}
 
-		st, err := ownership.Status(o.path)
-		if err != nil {
-			return removed, conflicts, err
-		}
-		if !st.Matches {
+		if !o.st.Matches {
 			conflicts.Add(o.rel, conflict.ReasonHashMismatch)
 			continue // never delete a file the human edited
 		}
