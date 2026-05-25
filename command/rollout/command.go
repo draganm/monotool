@@ -186,7 +186,7 @@ func Command() *cli.Command {
 			}
 
 			fmt.Printf("rolling out to %s\n", requestedRollout)
-			err = r.RollOut(ctx, cfg.ProjectRoot, values, message)
+			err = r.RollOut(ctx, cfg.ProjectRoot, values, message, false)
 			if err != nil {
 				return fmt.Errorf("roll out failed: %w", err)
 			}

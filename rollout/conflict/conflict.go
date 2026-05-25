@@ -64,6 +64,13 @@ func (s *Set) Err() error {
 	return ErrConflicts
 }
 
+// Items returns a copy of the collected conflicts.
+func (s *Set) Items() []Conflict {
+	out := make([]Conflict, len(s.items))
+	copy(out, s.items)
+	return out
+}
+
 // Report writes a human-readable conflict report to w, grouped by reason with
 // paths sorted within each group. Reasons appear in fixed order: unmarked,
 // then hash-mismatch.

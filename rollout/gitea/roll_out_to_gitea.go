@@ -15,7 +15,7 @@ type GiteaRollout struct {
 	RepoURL string `yaml:"repoUrl"`
 }
 
-func (g *GiteaRollout) RollOut(ctx context.Context, message string, generate func(dir string) error) error {
+func (g *GiteaRollout) RollOut(ctx context.Context, message string, generate func(dir string) (added, removed []string, err error)) error {
 	td, err := os.MkdirTemp("", "")
 	if err != nil {
 		return fmt.Errorf("could not create a temp dir: %w", err)
@@ -39,7 +39,7 @@ func (g *GiteaRollout) RollOut(ctx context.Context, message string, generate fun
 		return err
 	}
 
-	err = generate(td)
+	_, _, err = generate(td)
 	if err != nil {
 		return fmt.Errorf("could not generate manifests: %w", err)
 	}

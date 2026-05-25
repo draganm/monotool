@@ -16,7 +16,7 @@ type GitHubRollout struct {
 	Base    string `yaml:"base"`
 }
 
-func (g *GitHubRollout) RollOut(ctx context.Context, message string, generate func(dir string) error) error {
+func (g *GitHubRollout) RollOut(ctx context.Context, message string, generate func(dir string) (added, removed []string, err error)) error {
 	td, err := os.MkdirTemp("", "")
 	if err != nil {
 		return fmt.Errorf("could not create a temp dir: %w", err)
@@ -40,7 +40,7 @@ func (g *GitHubRollout) RollOut(ctx context.Context, message string, generate fu
 		return err
 	}
 
-	err = generate(td)
+	_, _, err = generate(td)
 	if err != nil {
 		return fmt.Errorf("could not generate manifests: %w", err)
 	}
