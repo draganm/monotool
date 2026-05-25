@@ -141,8 +141,7 @@ func renderTemplate(path string, raw []byte, values map[string]any) ([]byte, err
 	return buf.Bytes(), nil
 }
 
-// RollOut runs a full rollout. The old removeOldManifests + write-everything
-// logic is being replaced incrementally; the next task wires the new prune in.
+// RollOut runs a full rollout.
 func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[string]any, message string, force bool) error {
 	if r.Gitea == nil && r.GitHub == nil {
 		return errors.New("rollout must have either a gitea or github config")
@@ -157,7 +156,7 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 	}
 
 	generate := func(workDir string) (added, removed []string, err error) {
-		written, conflicts, err := GenerateManifests(ctx, GenerateOpts{
+		written, writeConflicts, err := GenerateManifests(ctx, GenerateOpts{
 			TemplatesPath: templatesAbs,
 			WorkDir:       workDir,
 			TargetPath:    r.TargetPath,
@@ -165,17 +164,39 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 			Force:         force,
 		})
 		if err != nil {
-			return written, nil, err
+			return nil, nil, err
 		}
-		if !conflicts.Empty() {
-			conflicts.Report(os.Stderr)
+
+		var pruneConflicts *conflict.Set
+		if r.PruneTargets {
+			desired := make(map[string]struct{}, len(written))
+			for _, p := range written {
+				desired[p] = struct{}{}
+			}
+			var pruned []string
+			pruned, pruneConflicts, err = Prune(ctx, PruneOpts{
+				WorkDir:    workDir,
+				TargetPath: r.TargetPath,
+				DesiredAbs: desired,
+				Force:      force,
+			})
+			if err != nil {
+				return nil, nil, err
+			}
+			removed = pruned
+		} else {
+			pruneConflicts = conflict.New()
+		}
+
+		all := mergeConflicts(writeConflicts, pruneConflicts)
+		if !all.Empty() {
+			all.Report(os.Stderr)
 			if !force {
-				return nil, nil, conflicts.Err()
+				return nil, nil, all.Err()
 			}
 		}
 
-		// Pruning is wired in the next task. For now: no removed paths.
-		return written, nil, nil
+		return written, removed, nil
 	}
 
 	switch {
@@ -189,4 +210,153 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 		}
 	}
 	return nil
+}
+
+// PruneOpts drives Prune. DesiredAbs is the set of absolute paths Prune must
+// leave alone (typically: every path GenerateManifests wrote, including
+// sidecars).
+type PruneOpts struct {
+	WorkDir    string
+	TargetPath string
+	DesiredAbs map[string]struct{}
+	Force      bool
+}
+
+// Prune walks WorkDir/TargetPath and deletes monotool-owned files that are no
+// longer in DesiredAbs, returning the absolute paths it removed and any
+// conflicts it detected. Unowned files (no marker) are left alone. Owned files
+// whose body hash no longer matches their marker generate a hash-mismatch
+// conflict; without Force they are not deleted, with Force they are reported
+// but still not deleted (we never delete a file a human edited).
+func Prune(_ context.Context, opts PruneOpts) (removed []string, conflicts *conflict.Set, err error) {
+	conflicts = conflict.New()
+	root := filepath.Join(opts.WorkDir, opts.TargetPath)
+
+	if _, statErr := os.Stat(root); errors.Is(statErr, os.ErrNotExist) {
+		return nil, conflicts, nil
+	}
+
+	type ownedFile struct {
+		path string
+		rel  string
+	}
+	var ownedFiles []ownedFile
+	var orphanSidecars []string
+
+	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+
+		// Orphan sidecar (sidecar whose JSON sibling doesn't exist) → cruft.
+		if filepath.Ext(p) == ownership.SidecarExt {
+			jsonPath := p[:len(p)-len(ownership.SidecarExt)]
+			if _, statErr := os.Stat(jsonPath); errors.Is(statErr, os.ErrNotExist) {
+				orphanSidecars = append(orphanSidecars, p)
+			}
+			return nil
+		}
+
+		st, err := ownership.Status(p)
+		if err != nil {
+			return err
+		}
+		if !st.Owned {
+			return nil
+		}
+		rel, err := filepath.Rel(opts.WorkDir, p)
+		if err != nil {
+			return err
+		}
+		ownedFiles = append(ownedFiles, ownedFile{path: p, rel: rel})
+		return nil
+	})
+	if err != nil {
+		return nil, conflicts, fmt.Errorf("walk %s: %w", root, err)
+	}
+
+	for _, o := range ownedFiles {
+		if _, keep := opts.DesiredAbs[o.path]; keep {
+			continue
+		}
+
+		st, err := ownership.Status(o.path)
+		if err != nil {
+			return removed, conflicts, err
+		}
+		if !st.Matches {
+			conflicts.Add(o.rel, conflict.ReasonHashMismatch)
+			continue // never delete a file the human edited
+		}
+		if err := ownership.Remove(o.path); err != nil {
+			return removed, conflicts, err
+		}
+		removed = append(removed, o.path)
+		if filepath.Ext(o.path) == ".json" {
+			removed = append(removed, o.path+ownership.SidecarExt)
+		}
+	}
+
+	for _, p := range orphanSidecars {
+		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return removed, conflicts, err
+		}
+		removed = append(removed, p)
+	}
+
+	if err := removeEmptyDirs(root); err != nil {
+		return removed, conflicts, err
+	}
+	return removed, conflicts, nil
+}
+
+// removeEmptyDirs walks root bottom-up and removes any directory left empty.
+// root itself is not removed.
+func removeEmptyDirs(root string) error {
+	var dirs []string
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			dirs = append(dirs, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	// Process deepest-first.
+	for i := len(dirs) - 1; i >= 0; i-- {
+		if dirs[i] == root {
+			continue
+		}
+		entries, err := os.ReadDir(dirs[i])
+		if err != nil {
+			return err
+		}
+		if len(entries) == 0 {
+			if err := os.Remove(dirs[i]); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func mergeConflicts(a, b *conflict.Set) *conflict.Set {
+	out := conflict.New()
+	for _, c := range a.Items() {
+		out.Add(c.Path, c.Reason)
+	}
+	for _, c := range b.Items() {
+		out.Add(c.Path, c.Reason)
+	}
+	return out
 }
