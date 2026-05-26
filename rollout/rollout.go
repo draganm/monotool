@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/draganm/manifestor/interpolate"
+	"github.com/draganm/monotool/rollout/confirm"
 	"github.com/draganm/monotool/rollout/conflict"
 	"github.com/draganm/monotool/rollout/gitea"
 	"github.com/draganm/monotool/rollout/github"
@@ -34,6 +35,10 @@ type GenerateOpts struct {
 	TargetPath    string
 	Values        map[string]any
 	Force         bool
+	// Confirm, when non-nil, is invoked before each overwrite-on-conflict
+	// write under --force. Returning proceed=false skips the write; returning
+	// a non-nil error aborts GenerateManifests.
+	Confirm confirm.Confirmer
 }
 
 // GenerateManifests reads templates, interpolates them, and writes the
@@ -64,12 +69,23 @@ func GenerateManifests(_ context.Context, opts GenerateOpts) (written []string, 
 
 		if st.Exists && (!st.Owned || !st.Matches) {
 			reason := conflict.ReasonUnmarked
+			action := "overwrite unmarked"
 			if st.Owned {
 				reason = conflict.ReasonHashMismatch
+				action = "overwrite edited"
 			}
 			conflicts.Add(relPath, reason)
 			if !opts.Force {
 				continue
+			}
+			if opts.Confirm != nil {
+				proceed, err := opts.Confirm(action, relPath)
+				if err != nil {
+					return written, conflicts, err
+				}
+				if !proceed {
+					continue
+				}
 			}
 		}
 

@@ -2,12 +2,14 @@ package rollout
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/draganm/monotool/rollout/confirm"
 	"github.com/draganm/monotool/rollout/conflict"
 	"github.com/draganm/monotool/rollout/ownership"
 )
@@ -310,5 +312,98 @@ func mustWriteMarked(t *testing.T, path, body string) {
 	}
 	if err := ownership.WriteMarked(path, []byte(body)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestGenerateManifestsConfirmYes(t *testing.T) {
+	templatesDir := setupTemplates(t, map[string]string{
+		"deploy.yaml": "kind: Deployment\n",
+	})
+	workDir := t.TempDir()
+	target := filepath.Join(workDir, "apps/staging/deploy.yaml")
+	mustWrite(t, target, "kind: HumanlyEdited\n")
+
+	var calls []string
+	conf := func(action, path string) (bool, error) {
+		calls = append(calls, action+":"+path)
+		return true, nil
+	}
+
+	written, _, err := GenerateManifests(context.Background(), GenerateOpts{
+		TemplatesPath: templatesDir,
+		WorkDir:       workDir,
+		TargetPath:    "apps/staging",
+		Values:        map[string]any{},
+		Force:         true,
+		Confirm:       conf,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || calls[0] != "overwrite unmarked:apps/staging/deploy.yaml" {
+		t.Fatalf("calls = %v", calls)
+	}
+	if len(written) != 1 || written[0] != target {
+		t.Fatalf("written = %v, want [%s]", written, target)
+	}
+	body, _ := os.ReadFile(target)
+	if !strings.Contains(string(body), "kind: Deployment") {
+		t.Fatalf("file not overwritten: %s", body)
+	}
+}
+
+func TestGenerateManifestsConfirmNo(t *testing.T) {
+	templatesDir := setupTemplates(t, map[string]string{
+		"deploy.yaml": "kind: Deployment\n",
+	})
+	workDir := t.TempDir()
+	target := filepath.Join(workDir, "apps/staging/deploy.yaml")
+	mustWrite(t, target, "kind: HumanlyEdited\n")
+
+	conf := func(action, path string) (bool, error) {
+		return false, nil
+	}
+
+	written, _, err := GenerateManifests(context.Background(), GenerateOpts{
+		TemplatesPath: templatesDir,
+		WorkDir:       workDir,
+		TargetPath:    "apps/staging",
+		Values:        map[string]any{},
+		Force:         true,
+		Confirm:       conf,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(written) != 0 {
+		t.Fatalf("written = %v, want empty", written)
+	}
+	body, _ := os.ReadFile(target)
+	if string(body) != "kind: HumanlyEdited\n" {
+		t.Fatalf("file was modified, body = %q", body)
+	}
+}
+
+func TestGenerateManifestsConfirmAbort(t *testing.T) {
+	templatesDir := setupTemplates(t, map[string]string{
+		"deploy.yaml": "kind: Deployment\n",
+	})
+	workDir := t.TempDir()
+	mustWrite(t, filepath.Join(workDir, "apps/staging/deploy.yaml"), "kind: HumanlyEdited\n")
+
+	conf := func(action, path string) (bool, error) {
+		return false, confirm.ErrAborted
+	}
+
+	_, _, err := GenerateManifests(context.Background(), GenerateOpts{
+		TemplatesPath: templatesDir,
+		WorkDir:       workDir,
+		TargetPath:    "apps/staging",
+		Values:        map[string]any{},
+		Force:         true,
+		Confirm:       conf,
+	})
+	if !errors.Is(err, confirm.ErrAborted) {
+		t.Fatalf("err = %v, want ErrAborted", err)
 	}
 }
