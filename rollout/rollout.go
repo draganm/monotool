@@ -158,7 +158,7 @@ func renderTemplate(path string, raw []byte, values map[string]any) ([]byte, err
 }
 
 // RollOut runs a full rollout.
-func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[string]any, message string, force bool) error {
+func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[string]any, message string, force bool, conf confirm.Confirmer) error {
 	if r.Gitea == nil && r.GitHub == nil {
 		return errors.New("rollout must have either a gitea or github config")
 	}
@@ -178,6 +178,7 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 			TargetPath:    r.TargetPath,
 			Values:        values,
 			Force:         force,
+			Confirm:       conf,
 		})
 		if err != nil {
 			return nil, nil, err
@@ -195,6 +196,7 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 				TargetPath: r.TargetPath,
 				DesiredAbs: desired,
 				Force:      force,
+				Confirm:    conf,
 			})
 			if err != nil {
 				return nil, nil, err
@@ -206,12 +208,15 @@ func (r *Rollout) RollOut(ctx context.Context, projectRoot string, values map[st
 
 		all := mergeConflicts(writeConflicts, pruneConflicts)
 		if !all.Empty() {
-			if force {
-				all.Warn(os.Stderr)
-			} else {
+			switch {
+			case !force:
 				all.Report(os.Stderr)
 				return nil, nil, all.Err()
+			case conf == nil:
+				// --force without a Confirmer: legacy unconditional behavior
+				all.Warn(os.Stderr)
 			}
+			// --force with a Confirmer: each prompt was its own ack, no extra output
 		}
 
 		return written, removed, nil
