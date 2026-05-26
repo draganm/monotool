@@ -238,6 +238,10 @@ type PruneOpts struct {
 	TargetPath string
 	DesiredAbs map[string]struct{}
 	Force      bool
+	// Confirm, when non-nil, is invoked before each deletion (stale owned
+	// file or orphan sidecar). Returning proceed=false skips that deletion;
+	// returning a non-nil error aborts Prune.
+	Confirm confirm.Confirmer
 }
 
 // Prune walks WorkDir/TargetPath and deletes monotool-owned files that are no
@@ -309,6 +313,15 @@ func Prune(_ context.Context, opts PruneOpts) (removed []string, conflicts *conf
 			conflicts.Add(o.rel, conflict.ReasonHashMismatch)
 			continue // never delete a file the human edited
 		}
+		if opts.Confirm != nil {
+			proceed, err := opts.Confirm("delete stale", o.rel)
+			if err != nil {
+				return removed, conflicts, err
+			}
+			if !proceed {
+				continue
+			}
+		}
 		if err := ownership.Remove(o.path); err != nil {
 			return removed, conflicts, err
 		}
@@ -319,6 +332,19 @@ func Prune(_ context.Context, opts PruneOpts) (removed []string, conflicts *conf
 	}
 
 	for _, p := range orphanSidecars {
+		if opts.Confirm != nil {
+			rel, relErr := filepath.Rel(opts.WorkDir, p)
+			if relErr != nil {
+				return removed, conflicts, relErr
+			}
+			proceed, err := opts.Confirm("remove orphan sidecar", rel)
+			if err != nil {
+				return removed, conflicts, err
+			}
+			if !proceed {
+				continue
+			}
+		}
 		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return removed, conflicts, err
 		}

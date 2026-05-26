@@ -407,3 +407,112 @@ func TestGenerateManifestsConfirmAbort(t *testing.T) {
 		t.Fatalf("err = %v, want ErrAborted", err)
 	}
 }
+
+func TestPruneConfirmYes(t *testing.T) {
+	workDir := t.TempDir()
+	targetDir := filepath.Join(workDir, "apps/staging")
+	stale := filepath.Join(targetDir, "stale.yaml")
+	mustWriteMarked(t, stale, "kind: Stale\n")
+
+	var calls []string
+	conf := func(action, path string) (bool, error) {
+		calls = append(calls, action+":"+path)
+		return true, nil
+	}
+
+	removed, _, err := Prune(context.Background(), PruneOpts{
+		WorkDir:    workDir,
+		TargetPath: "apps/staging",
+		DesiredAbs: map[string]struct{}{},
+		Confirm:    conf,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || calls[0] != "delete stale:apps/staging/stale.yaml" {
+		t.Fatalf("calls = %v", calls)
+	}
+	if len(removed) != 1 || removed[0] != stale {
+		t.Fatalf("removed = %v, want [%s]", removed, stale)
+	}
+}
+
+func TestPruneConfirmNo(t *testing.T) {
+	workDir := t.TempDir()
+	targetDir := filepath.Join(workDir, "apps/staging")
+	stale := filepath.Join(targetDir, "stale.yaml")
+	mustWriteMarked(t, stale, "kind: Stale\n")
+
+	conf := func(action, path string) (bool, error) {
+		return false, nil
+	}
+
+	removed, _, err := Prune(context.Background(), PruneOpts{
+		WorkDir:    workDir,
+		TargetPath: "apps/staging",
+		DesiredAbs: map[string]struct{}{},
+		Confirm:    conf,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed) != 0 {
+		t.Fatalf("removed = %v, want empty", removed)
+	}
+	if _, err := os.Stat(stale); err != nil {
+		t.Fatalf("stale file was deleted: %v", err)
+	}
+}
+
+func TestPruneConfirmAbort(t *testing.T) {
+	workDir := t.TempDir()
+	targetDir := filepath.Join(workDir, "apps/staging")
+	stale := filepath.Join(targetDir, "stale.yaml")
+	mustWriteMarked(t, stale, "kind: Stale\n")
+
+	conf := func(action, path string) (bool, error) {
+		return false, confirm.ErrAborted
+	}
+
+	_, _, err := Prune(context.Background(), PruneOpts{
+		WorkDir:    workDir,
+		TargetPath: "apps/staging",
+		DesiredAbs: map[string]struct{}{},
+		Confirm:    conf,
+	})
+	if !errors.Is(err, confirm.ErrAborted) {
+		t.Fatalf("err = %v, want ErrAborted", err)
+	}
+}
+
+func TestPruneOrphanSidecarConfirmNo(t *testing.T) {
+	workDir := t.TempDir()
+	targetDir := filepath.Join(workDir, "apps/staging")
+	sidecar := filepath.Join(targetDir, "ghost.json.monotool")
+	mustWrite(t, sidecar, "deadbeef\n")
+
+	var calls []string
+	conf := func(action, path string) (bool, error) {
+		calls = append(calls, action+":"+path)
+		return false, nil
+	}
+
+	removed, _, err := Prune(context.Background(), PruneOpts{
+		WorkDir:    workDir,
+		TargetPath: "apps/staging",
+		DesiredAbs: map[string]struct{}{},
+		Confirm:    conf,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || calls[0] != "remove orphan sidecar:apps/staging/ghost.json.monotool" {
+		t.Fatalf("calls = %v", calls)
+	}
+	if len(removed) != 0 {
+		t.Fatalf("removed = %v, want empty", removed)
+	}
+	if _, err := os.Stat(sidecar); err != nil {
+		t.Fatalf("sidecar was deleted: %v", err)
+	}
+}
