@@ -200,6 +200,7 @@ func Command() *cli.Command {
 					return errors.New("--force requires an interactive terminal")
 				}
 				conf = confirm.TTYConfirmer(os.Stdin, os.Stderr)
+				fmt.Fprintln(os.Stderr, "--force review: confirming each destructive action")
 			}
 
 			err = r.RollOut(ctx, cfg.ProjectRoot, values, message, c.Bool("force"), conf)
