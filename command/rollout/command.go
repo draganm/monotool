@@ -3,6 +3,7 @@ package rollout
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/signal"
 	"sort"
 	"strings"
@@ -13,12 +14,14 @@ import (
 
 	"github.com/draganm/monotool/config"
 	"github.com/draganm/monotool/docker"
+	"github.com/draganm/monotool/rollout/confirm"
 	"github.com/gosuri/uiprogress"
 	"github.com/gosuri/uiprogress/util/strutil"
 	"github.com/samber/lo"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
+	"golang.org/x/term"
 )
 
 func pointerOf[T any](v T) *T {
@@ -190,7 +193,20 @@ func Command() *cli.Command {
 			}
 
 			fmt.Printf("rolling out to %s\n", requestedRollout)
-			err = r.RollOut(ctx, cfg.ProjectRoot, values, message, c.Bool("force"), nil)
+
+			var conf confirm.Confirmer
+			if c.Bool("force") {
+				if !term.IsTerminal(int(os.Stdin.Fd())) {
+					return errors.New("--force requires an interactive terminal")
+				}
+				conf = confirm.TTYConfirmer(os.Stdin, os.Stderr)
+			}
+
+			err = r.RollOut(ctx, cfg.ProjectRoot, values, message, c.Bool("force"), conf)
+			if errors.Is(err, confirm.ErrAborted) {
+				fmt.Fprintln(os.Stderr, "rollout aborted by user")
+				return cli.Exit("", 1)
+			}
 			if err != nil {
 				return fmt.Errorf("roll out failed: %w", err)
 			}
