@@ -7,7 +7,6 @@ require (
 	github.com/docker/cli v28.1.1+incompatible
 	github.com/draganm/gosha v0.0.1
 	github.com/draganm/manifestor v0.3.0
-	github.com/gosuri/uiprogress v0.0.1
 	github.com/samber/lo v1.38.1
 	github.com/urfave/cli/v2 v2.25.7
 	golang.org/x/mod v0.32.0
@@ -63,7 +62,6 @@ require (
 	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
-	github.com/gosuri/uilive v0.0.4 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.22.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect

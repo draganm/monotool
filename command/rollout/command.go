@@ -8,25 +8,18 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
-	"time"
 
 	"github.com/draganm/monotool/config"
 	"github.com/draganm/monotool/docker"
 	"github.com/draganm/monotool/rollout/confirm"
-	"github.com/gosuri/uiprogress"
-	"github.com/gosuri/uiprogress/util/strutil"
+	"github.com/draganm/monotool/ui"
 	"github.com/samber/lo"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/term"
 )
-
-func pointerOf[T any](v T) *T {
-	return &v
-}
 
 func Command() *cli.Command {
 	return &cli.Command{
@@ -56,11 +49,10 @@ func Command() *cli.Command {
 
 			requestedRollout := c.Args().First()
 
-			buildSemapore := semaphore.NewWeighted(4)
+			buildSemaphore := semaphore.NewWeighted(4)
 			checkImageSemaphore := semaphore.NewWeighted(10)
 
 			if requestedRollout == "" {
-
 				switch len(cfg.RollOuts) {
 				case 0:
 					return errors.New("there are no rollouts defined in the config file")
@@ -72,13 +64,12 @@ func Command() *cli.Command {
 					allRollouts := lo.Keys(cfg.RollOuts)
 					sort.Strings(allRollouts)
 					sb := new(strings.Builder)
-					sb.WriteString("there are %s rollouts available, please specify one of the following:\n")
+					sb.WriteString("there are %d rollouts available, please specify one of the following:\n")
 					for _, r := range allRollouts {
 						sb.WriteString(fmt.Sprintf("%s\n", r))
 					}
 					return fmt.Errorf(sb.String(), len(cfg.RollOuts))
 				}
-
 			}
 
 			r, found := cfg.RollOuts[requestedRollout]
@@ -88,6 +79,14 @@ func Command() *cli.Command {
 
 			ctx, cancel := signal.NotifyContext(c.Context, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 			defer cancel()
+
+			imageNames := lo.Keys(cfg.Images)
+			sort.Strings(imageNames)
+
+			prog := ui.New(imageNames)
+			prog.Run()
+			prog.WaitForContextCancel(ctx)
+
 			images := map[string]string{}
 			values := map[string]any{
 				"images": images,
@@ -96,100 +95,86 @@ func Command() *cli.Command {
 
 			eg, egCtx := errgroup.WithContext(ctx)
 
-			progress := uiprogress.New()
-			progress.RefreshInterval = time.Second
-			progress.Width = 20
-			progress.Start()
-
-			for n, im := range cfg.Images {
+			for _, n := range imageNames {
 				n := n
-				im := im
+				im := cfg.Images[n]
 				eg.Go(func() error {
 					if egCtx.Err() != nil {
 						return egCtx.Err()
 					}
 
-					bar := progress.AddBar(3)
-					bar.PrependElapsed()
-					bar.TimeStarted = time.Now()
-
-					state := atomic.Pointer[string]{}
-					state.Store(pointerOf("initializing"))
+					w := prog.Writer(n)
+					prog.SetState(n, "checking remote")
 
 					imageName, err := im.DockerImageName(egCtx, cfg.ProjectRoot)
 					if err != nil {
+						prog.Finish(n, err)
 						return fmt.Errorf("could not calculate docker image of %s: %w", n, err)
 					}
+
+					prog.SetImageName(n, imageName)
 
 					imagesLock.Lock()
 					images[n] = imageName
 					imagesLock.Unlock()
 
-					err = checkImageSemaphore.Acquire(egCtx, 1)
-					if err != nil {
+					if err := checkImageSemaphore.Acquire(egCtx, 1); err != nil {
+						prog.Finish(n, err)
 						return fmt.Errorf("could not acquire semaphore for image %s: %w", n, err)
 					}
 
-					bar.AppendFunc(func(b *uiprogress.Bar) string {
-						return fmt.Sprintf("%s| %s", strutil.PadRight(*state.Load(), 23, ' '), imageName)
-					})
-					state.Store(pointerOf("getting image status"))
-
 					hasImage, err := docker.RepoHasImage(egCtx, imageName)
+					checkImageSemaphore.Release(1)
 					if err != nil {
-						checkImageSemaphore.Release(1)
+						prog.Finish(n, err)
 						return fmt.Errorf("could not get status of image %s: %w", n, err)
 					}
 
-					checkImageSemaphore.Release(1)
-
 					if hasImage {
-						bar.Set(3)
-						state.Store(pointerOf("already pushed"))
+						prog.SetState(n, "already pushed")
+						prog.Finish(n, nil)
 						return nil
 					}
 
 					isBuilt, err := im.IsAlreadyBuilt(egCtx, cfg.ProjectRoot)
 					if err != nil {
+						prog.Finish(n, err)
 						return fmt.Errorf("could not get status of image %s: %w", n, err)
 					}
 
-					bar.Incr()
-
 					if !isBuilt {
-						err = buildSemapore.Acquire(egCtx, 1)
-						if err != nil {
+						if err := buildSemaphore.Acquire(egCtx, 1); err != nil {
+							prog.Finish(n, err)
 							return fmt.Errorf("could not acquire semaphore for building image %s: %w", n, err)
 						}
-						state.Store(pointerOf("building image"))
-						err = im.Build(egCtx, cfg.ProjectRoot)
-						buildSemapore.Release(1)
+						prog.SetState(n, "building image")
+						err = im.Build(egCtx, cfg.ProjectRoot, w)
+						buildSemaphore.Release(1)
 						if err != nil {
+							prog.Finish(n, err)
 							return err
 						}
 					}
 
-					bar.Incr()
-
-					state.Store(pointerOf("pushing image"))
-					err = docker.Push(egCtx, imageName)
-					if err != nil {
+					prog.SetState(n, "pushing image")
+					if err := docker.Push(egCtx, imageName, w); err != nil {
+						prog.Finish(n, err)
 						return err
 					}
 
-					bar.Incr()
-					state.Store(pointerOf("done"))
-
+					prog.SetState(n, "done")
+					prog.Finish(n, nil)
 					return nil
-
 				})
-
 			}
 
-			err = eg.Wait()
-			progress.Stop()
-			if err != nil {
-				return fmt.Errorf("could not build images: %w", err)
+			buildErr := eg.Wait()
+			prog.FinishAll()
+			if waitErr := prog.Wait(); waitErr != nil {
+				return waitErr
+			}
+			if buildErr != nil {
+				return fmt.Errorf("could not build images: %w", buildErr)
 			}
 
 			fmt.Printf("rolling out to %s\n", requestedRollout)
@@ -213,7 +198,6 @@ func Command() *cli.Command {
 			}
 
 			return nil
-
 		},
 	}
 }
