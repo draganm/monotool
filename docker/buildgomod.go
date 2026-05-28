@@ -69,6 +69,15 @@ func BuildGoMod(ctx context.Context, mainPackagePath string, imageName string, p
 	}
 	dockerRoot := mod.Dir
 
+	genCmd := exec.CommandContext(ctx, "go", "generate", "./...")
+	genCmd.Dir = dockerRoot
+	genOut := new(bytes.Buffer)
+	genCmd.Stdout = genOut
+	genCmd.Stderr = genOut
+	if err := genCmd.Run(); err != nil {
+		return fmt.Errorf("go generate ./... failed (%w):\n%s", err, genOut.String())
+	}
+
 	tempDockerfile, err := os.CreateTemp("", "")
 	if err != nil {
 		return fmt.Errorf("could not create temp dockerfile: %w", err)
