@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path"
 	"path/filepath"
 
@@ -102,7 +103,7 @@ func (i *Image) DockerImageName(ctx context.Context, projectRoot string) (string
 	return fmt.Sprintf("%s:%s", i.DockerImage, tag), nil
 }
 
-func (i *Image) Build(ctx context.Context, projectRoot string) error {
+func (i *Image) Build(ctx context.Context, projectRoot string, out io.Writer) error {
 	imageWithTag, err := i.DockerImageName(ctx, projectRoot)
 	if err != nil {
 		return err
@@ -115,7 +116,7 @@ func (i *Image) Build(ctx context.Context, projectRoot string) error {
 			platform = "linux/amd64"
 		}
 
-		err = docker.BuildGoMod(ctx, path.Join(projectRoot, i.Go.Package), imageWithTag, platform)
+		err = docker.BuildGoMod(ctx, path.Join(projectRoot, i.Go.Package), imageWithTag, platform, out)
 		if err != nil {
 			return fmt.Errorf("while building image %s: %w", imageWithTag, err)
 		}
@@ -125,7 +126,7 @@ func (i *Image) Build(ctx context.Context, projectRoot string) error {
 			platform = "linux/amd64"
 		}
 		contextDir, dockerfilePath := i.Docker.resolvePaths(projectRoot)
-		err = docker.BuildDockerfile(ctx, contextDir, dockerfilePath, imageWithTag, platform)
+		err = docker.BuildDockerfile(ctx, contextDir, dockerfilePath, imageWithTag, platform, out)
 		if err != nil {
 			return fmt.Errorf("while building docker image %s: %w", imageWithTag, err)
 		}

@@ -5,6 +5,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -22,13 +23,12 @@ type DockerfileData struct {
 	GoVersion   string
 }
 
-func BuildGoMod(ctx context.Context, mainPackagePath string, imageName string, platform string) error {
+func BuildGoMod(ctx context.Context, mainPackagePath, imageName, platform string, out io.Writer) error {
 	pkg, err := packages.Load(&packages.Config{
 		Mode:    packages.NeedModule | packages.NeedName,
 		Context: ctx,
 		Dir:     mainPackagePath,
 	}, ".")
-
 	if err != nil {
 		return fmt.Errorf("could not get main package: %w", err)
 	}
@@ -49,9 +49,7 @@ func BuildGoMod(ctx context.Context, mainPackagePath string, imageName string, p
 	}
 
 	fullPath := pkg[0].PkgPath
-
 	path := modFile.Module.Mod.Path
-
 	shortPath := strings.TrimPrefix(fullPath, path)
 	shortPath = strings.TrimPrefix(shortPath, "/")
 
@@ -71,18 +69,16 @@ func BuildGoMod(ctx context.Context, mainPackagePath string, imageName string, p
 
 	genCmd := exec.CommandContext(ctx, "go", "generate", "./...")
 	genCmd.Dir = dockerRoot
-	genOut := new(bytes.Buffer)
-	genCmd.Stdout = genOut
-	genCmd.Stderr = genOut
+	genCmd.Stdout = out
+	genCmd.Stderr = out
 	if err := genCmd.Run(); err != nil {
-		return fmt.Errorf("go generate ./... failed (%w):\n%s", err, genOut.String())
+		return fmt.Errorf("go generate ./... failed: %w", err)
 	}
 
 	tempDockerfile, err := os.CreateTemp("", "")
 	if err != nil {
 		return fmt.Errorf("could not create temp dockerfile: %w", err)
 	}
-
 	defer os.Remove(tempDockerfile.Name())
 	defer tempDockerfile.Close()
 
@@ -91,22 +87,16 @@ func BuildGoMod(ctx context.Context, mainPackagePath string, imageName string, p
 		return fmt.Errorf("could not write to temp docker file: %w", err)
 	}
 
-	err = tempDockerfile.Close()
-	if err != nil {
+	if err := tempDockerfile.Close(); err != nil {
 		return fmt.Errorf("could not close temp docker file: %w", err)
 	}
 
 	cmd := exec.CommandContext(ctx, "docker", "buildx", "build", "--platform", platform, "-t", imageName, "-f", tempDockerfile.Name(), "--progress", "plain", dockerRoot)
-	out := new(bytes.Buffer)
-
 	cmd.Stdout = out
 	cmd.Stderr = out
 
-	err = cmd.Run()
-	if err != nil {
-		return fmt.Errorf("docker build failed (%w):\n%s", err, out.String())
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker build failed: %w", err)
 	}
-
 	return nil
-
 }

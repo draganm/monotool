@@ -1,29 +1,23 @@
 package docker
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 )
 
-func Push(ctx context.Context, image string) error {
+func Push(ctx context.Context, image string, out io.Writer) error {
 	dockerPath, err := exec.LookPath("docker")
 	if err != nil {
 		return fmt.Errorf("could not find docker binary: %w", err)
 	}
 	cmd := exec.CommandContext(ctx, dockerPath, "image", "push", "-q", image)
-
-	out := new(bytes.Buffer)
-
-	cmd.Stderr = out
 	cmd.Stdout = out
-	err = cmd.Run()
+	cmd.Stderr = out
 
-	if err != nil {
-		return fmt.Errorf("could not push image (%s): %w", out.String(), err)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("could not push image: %w", err)
 	}
-
 	return nil
-
 }

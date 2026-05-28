@@ -17,7 +17,7 @@
             pname = "monotool";
             version = self.shortRev or self.dirtyShortRev or "dev";
             src = ./.;
-            vendorHash = "sha256-0yNbNeokGAqQhkK0hurcA4Ef+7cUTDcogohvfa6Cp+Q=";
+            vendorHash = "sha256-5bz7SurQWCYaFl9n1Kq3u7X4UfBITYfaTPyU9Rf8R1o=";
           };
           default = self.packages.${system}.monotool;
         };
