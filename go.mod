@@ -21,6 +21,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/docker/docker v28.1.1+incompatible
+	github.com/mattn/go-isatty v0.0.20
 	github.com/moby/patternmatcher v0.6.1
 	golang.org/x/term v0.43.0
 )
@@ -67,7 +68,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/miekg/pkcs11 v1.1.1 // indirect

@@ -218,7 +218,7 @@ func (m *Model) View() string {
 
 	var rows []string
 	for i, it := range m.items {
-		row := renderItemRow(it, m.now, leftWidth-2)
+		row := renderItemRow(it, m.now)
 		if i == m.selected {
 			row = selectedItemStyle.Render(row)
 		} else {
@@ -263,7 +263,7 @@ func (m *Model) View() string {
 	return lipgloss.JoinVertical(lipgloss.Left, title, body, footer)
 }
 
-func renderItemRow(it *imageItem, now time.Time, width int) string {
+func renderItemRow(it *imageItem, now time.Time) string {
 	name := it.Name
 	if len(name) > 14 {
 		name = name[:14]
