@@ -73,7 +73,7 @@ func (m *Model) initSizes() {
 	if rightWidth < 20 {
 		rightWidth = 20
 	}
-	vpHeight := m.height - 4
+	vpHeight := m.height - 5
 	if vpHeight < 5 {
 		vpHeight = 5
 	}
@@ -194,6 +194,18 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m *Model) renderRightHeader(width int) string {
+	if m.selected < 0 || m.selected >= len(m.items) {
+		return ""
+	}
+	it := m.items[m.selected]
+	header := it.Name
+	if it.ImageName != "" {
+		header = it.Name + "  " + it.ImageName
+	}
+	return rightHeaderStyle.Width(width).Render(header)
+}
+
 func (m *Model) refreshViewport() {
 	if m.selected < 0 || m.selected >= len(m.items) {
 		m.viewport.SetContent("")
@@ -236,7 +248,9 @@ func (m *Model) View() string {
 	if rightWidth < 20 {
 		rightWidth = 20
 	}
-	right := rightPaneStyle.Width(rightWidth).Height(leftHeight).Render(m.viewport.View())
+
+	rightBody := lipgloss.JoinVertical(lipgloss.Left, m.renderRightHeader(rightWidth-2), m.viewport.View())
+	right := rightPaneStyle.Width(rightWidth).Height(leftHeight).Render(rightBody)
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 
@@ -283,11 +297,7 @@ func renderItemRow(it *imageItem, now time.Time) string {
 		elapsed = formatDuration(it.Finished.Sub(it.Started))
 	}
 
-	row := fmt.Sprintf("%s %s %s", name, state, elapsed)
-	if it.ImageName != "" {
-		row += "  " + it.ImageName
-	}
-	return row
+	return fmt.Sprintf("%s %s %s", name, state, elapsed)
 }
 
 func padRight(s string, width int) string {

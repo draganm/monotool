@@ -19,6 +19,12 @@ var (
 			BorderForeground(lipgloss.Color("240")).
 			Padding(0, 1)
 
+	rightHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#ffffff")).
+				Background(lipgloss.Color("236")).
+				Padding(0, 1)
+
 	selectedItemStyle = lipgloss.NewStyle().
 				Bold(true).
 				Foreground(lipgloss.Color("#ffffff")).
