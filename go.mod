@@ -19,6 +19,7 @@ require (
 require (
 	github.com/docker/docker v28.1.1+incompatible
 	github.com/moby/patternmatcher v0.6.1
+	golang.org/x/term v0.43.0
 )
 
 require (
@@ -90,7 +91,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.3.1 // indirect
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
 	golang.org/x/net v0.49.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241021214115-324edc3d5d38 // indirect

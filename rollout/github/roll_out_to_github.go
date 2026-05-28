@@ -16,49 +16,46 @@ type GitHubRollout struct {
 	Base    string `yaml:"base"`
 }
 
-func (g *GitHubRollout) RollOut(ctx context.Context, message string, generate func(dir string) error) error {
+func (g *GitHubRollout) RollOut(ctx context.Context, message string, generate func(dir string) (added, removed []string, err error)) error {
 	td, err := os.MkdirTemp("", "")
 	if err != nil {
 		return fmt.Errorf("could not create a temp dir: %w", err)
 	}
+	defer os.RemoveAll(td)
 
-	defer func() {
-		os.RemoveAll(td)
-	}()
-
-	err = gitops.CloneRepo(ctx, g.RepoURL, td)
-	if err != nil {
+	if err := gitops.CloneRepo(ctx, g.RepoURL, td); err != nil {
 		return err
 	}
 
 	commitTime := time.Now().Format("2006-01-02-15-04-05")
-
 	branchName := fmt.Sprintf("rollout-%s", commitTime)
-
-	err = gitops.CreateBranch(ctx, td, branchName)
-	if err != nil {
+	if err := gitops.CreateBranch(ctx, td, branchName); err != nil {
 		return err
 	}
 
-	err = generate(td)
+	added, removed, err := generate(td)
 	if err != nil {
 		return fmt.Errorf("could not generate manifests: %w", err)
 	}
 
-	err = gitops.AddFiles(ctx, td)
+	if err := gitops.StageChanges(ctx, td, added, removed); err != nil {
+		return fmt.Errorf("could not stage changes: %w", err)
+	}
+
+	hasChanges, err := gitops.HasStagedChanges(ctx, td)
 	if err != nil {
-		return fmt.Errorf("could not add generated files: %w", err)
+		return err
+	}
+	if !hasChanges {
+		fmt.Println("no changes to roll out")
+		return nil
 	}
 
 	commitMessage := fmt.Sprintf("rollout %s\n\n%s", commitTime, message)
-
-	err = gitops.CreateCommit(ctx, td, commitMessage)
-	if err != nil {
+	if err := gitops.CreateCommit(ctx, td, commitMessage); err != nil {
 		return fmt.Errorf("could not create commit: %w", err)
 	}
-
-	err = gitops.PushToOrigin(ctx, td, branchName)
-	if err != nil {
+	if err := gitops.PushToOrigin(ctx, td, branchName); err != nil {
 		return fmt.Errorf("could not push: %w", err)
 	}
 
@@ -66,9 +63,7 @@ func (g *GitHubRollout) RollOut(ctx context.Context, message string, generate fu
 	if err != nil {
 		return fmt.Errorf("could not create PR: %w", err)
 	}
-
 	fmt.Println(output)
-
 	return nil
 }
 
